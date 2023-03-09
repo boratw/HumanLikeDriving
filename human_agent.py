@@ -62,22 +62,24 @@ class HumanAgent(object):
 
             self.steerCmd = 0.55 * np.tan(1.1 * jsInputs[0])
 
-            self.throttleCmd = 1.6 + (2.05 * np.log10(-0.7 * jsInputs[2] + 1.4) - 1.2) / 0.92
-            if self.throttleCmd <= 0:
-                self.throttleCmd = 0
-            elif self.throttleCmd > 1:
-                self.throttleCmd = 1
+            if jsInputs[2] < -0.9:
+                jsInputs[2] = -0.9
+            elif jsInputs[2] > 0.9:
+                jsInputs[2] = 0.9
+            #self.throttleCmd = 1.6 + (2.05 * np.log10(-0.7 * jsInputs[2] + 1.4) - 1.2) / 0.92
+            self.throttleCmd = ((0.9 - jsInputs[2]) / 1.8) ** 0.5
 
-            self.brakeCmd = 1.6 + (2.05 * np.log10(-0.7 * jsInputs[3] + 1.4) - 1.2) / 0.92
-            if self.brakeCmd <= 0:
-                self.brakeCmd = 0
-            elif self.brakeCmd > 1:
-                self.brakeCmd = 1
+            #self.brakeCmd = 1.6 + (2.05 * np.log10(-0.7 * jsInputs[3] + 1.4) - 1.2) / 0.92
+            if jsInputs[3] < -0.9:
+                jsInputs[3] = -0.9
+            elif jsInputs[3] > 0.9:
+                jsInputs[3] = 0.9
+            self.brakeCmd = ((0.9 - jsInputs[3]) / 1.8) ** 2.0
 
-            print(self.steerCmd, self.throttleCmd, self.brakeCmd)
+            print(self.steerCmd, self.throttleCmd, self.brakeCmd )
             control = carla.VehicleControl()
-            control.throttle = self.throttleCmd
-            control.brake = self.brakeCmd
+            control.throttle = self.throttleCmd * 0.8 + 0.2
+            control.brake = self.brakeCmd * 0.5
             control.steer = self.steerCmd
             control.manual_gear_shift = False
             control.hand_brake = False
@@ -96,6 +98,15 @@ class HumanAgent(object):
         self.front_camera = Camera(self.player, 'front')
         self.leftside_camera = Camera(self.player, 'leftside')
         self.rightside_camera = Camera(self.player, 'rightside')
+
+
+        physics_control = self.player.get_physics_control()
+        physics_control.drag_coefficient = 1.0
+        physics_control.max_rpm = 3000.0
+        #physics_control.damping_rate_full_throttle = 0.25
+        #physics_control.damping_rate_zero_throttle_clutch_disengaged = 5.0
+        #physics_control.moi = 4.0
+        self.player.apply_physics_control(physics_control)
 
     def render(self, image):
         if self.front_camera != None:
