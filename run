@@ -1,0 +1,5 @@
+#!/bin/bash
+
+source "/home/user/Documents/Taewoo/carla-venv/bin/activate"
+
+python $@
