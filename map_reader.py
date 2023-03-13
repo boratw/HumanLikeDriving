@@ -4,28 +4,32 @@ import numpy as np
 import random
 from enum import Enum
 from collections import deque
+import pickle
 
 class LaneInfo(object):
-    def __init__(self, world):
-        self.map = world.get_map()
+    def __init__(self):
+        self.lanes = {}
 
+    def Load_from_World(self, world):
+        self.map = world.get_map()
         waypoints = self.map.generate_waypoints(2.0)
         self.lanes = {}
 
         for w in waypoints:
             laneid = w.road_id * 100 + w.lane_id
             if laneid not in self.lanes:
-                lane = {"list" : [w], "left" : None, "right" : None, "type" : LaneType.Follow, "next" : []}
+                lane = {"list" : [], "left" : None, "right" : None, "type" : LaneType.Follow, "next" : []}
+                lane["list"].append(w.transform)
                 for wp in w.previous_until_lane_start(2.0):
                     if wp.road_id == w.road_id:
-                        lane["list"].append(wp)
+                        lane["list"].append(wp.transform)
                 lane["list"] = lane["list"][::-1]
                 for wp in w.next_until_lane_end(2.0):
                     if wp.road_id == w.road_id:
-                        lane["list"].append(wp)
+                        lane["list"].append(wp.transform)
 
                 if wp.is_junction == True:
-                    turning = np.sin((lane["list"][-1].transform.rotation.yaw - lane["list"][0].transform.rotation.yaw) * 0.017453293)
+                    turning = np.sin((lane["list"][-1].rotation.yaw - lane["list"][0].rotation.yaw) * 0.017453293)
                     if turning < -0.5:
                         lane["type"] = LaneType.Left
                     elif turning > 0.5:
@@ -50,6 +54,15 @@ class LaneInfo(object):
                             
 
                 self.lanes[laneid] = lane
+
+    def Load_from_File(self, filename):
+        with open(filename,"rb") as f:
+            self.lanes = pickle.load(f)
+    def Save(self, filename):
+        with open(filename,"wb") as f:
+            pickle.dump(self.lanes, f)
+            
+
 
 class RoutePlanner(object):
     def __init__(self, laneinfo):

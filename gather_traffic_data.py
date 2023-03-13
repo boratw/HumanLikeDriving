@@ -23,8 +23,6 @@ except IndexError:
 
 import carla
 
-
-import carla
 import numpy as np
 
 from carla import VehicleLightState as vls
