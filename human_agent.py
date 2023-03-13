@@ -18,28 +18,34 @@ import cv2
 import random
 import weakref
 
-from algorithm.global_route_planner import GlobalRoutePlanner
 
 class HumanAgent(object):
-    def __init__(self, world, client, messages, route_plan_hop_resolution=2.0):
+    def __init__(self, world, client):
         self.world = world
         self.client = client
         self.map = self.world.get_map()
-        self.messages = messages
 
-        self.route_planner = GlobalRoutePlanner(self.map, route_plan_hop_resolution)
-        self.route_planner.setup()
-
-        blueprint_library = self.world.get_blueprint_library() 
         blueprints = world.get_blueprint_library().filter('vehicle.*')
-        blueprints = [x for x in blueprints if int(x.get_attribute('number_of_wheels')) == 4]
-        blueprints = [x for x in blueprints if not x.id.endswith('microlino')]
-        blueprints = [x for x in blueprints if not x.id.endswith('carlacola')]
-        blueprints = [x for x in blueprints if not x.id.endswith('cybertruck')]
-        blueprints = [x for x in blueprints if not x.id.endswith('t2')]
-        blueprints = [x for x in blueprints if not x.id.endswith('sprinter')]
-        blueprints = [x for x in blueprints if not x.id.endswith('firetruck')]
-        blueprints = [x for x in blueprints if not x.id.endswith('ambulance')]
+        blueprints = [x for x in blueprints if 
+                      x.id.endswith('a2') or
+                      x.id.endswith('etron') or
+                      x.id.endswith('tt') or
+                      x.id.endswith('grandtourer') or
+                      x.id.endswith('impala') or
+                      x.id.endswith('c3') or
+                      x.id.endswith('charger_2020') or
+                      x.id.endswith('crown') or
+                      x.id.endswith('mkz_2017') or
+                      x.id.endswith('mkz_2020') or
+                      x.id.endswith('coupe') or
+                      x.id.endswith('coupe_2020') or
+                      x.id.endswith('cooper_s') or
+                      x.id.endswith('cooper_s_2021') or
+                      x.id.endswith('mustang') or
+                      x.id.endswith('micra') or
+                      x.id.endswith('leon') or
+                      x.id.endswith('model3') or
+                      x.id.endswith('prius')]
         self.blueprints = blueprints
         self.player = None
         self.front_camera = None
@@ -55,31 +61,33 @@ class HumanAgent(object):
     def step(self):
         if self.player != None:
 
+            v_vec = self.player.get_velocity()
+            self.velocity = np.sqrt(v_vec.x ** 2 + v_vec.y ** 2) 
+
             pygame.event.get()
             numAxes = self.joystick.get_numaxes()
             jsInputs = [float(self.joystick.get_axis(i)) for i in range(numAxes)]
 
 
-            self.steerCmd = 0.55 * np.tan(1.1 * jsInputs[0])
+            self.steerCmd = 0.45 * np.tan(1.1 * jsInputs[0])
 
             if jsInputs[2] < -0.9:
                 jsInputs[2] = -0.9
             elif jsInputs[2] > 0.9:
                 jsInputs[2] = 0.9
             #self.throttleCmd = 1.6 + (2.05 * np.log10(-0.7 * jsInputs[2] + 1.4) - 1.2) / 0.92
-            self.throttleCmd = ((0.9 - jsInputs[2]) / 1.8) ** 0.5
+            self.throttleCmd = ((0.9 - jsInputs[2]) / 1.8) ** 0.75
 
             #self.brakeCmd = 1.6 + (2.05 * np.log10(-0.7 * jsInputs[3] + 1.4) - 1.2) / 0.92
             if jsInputs[3] < -0.9:
                 jsInputs[3] = -0.9
             elif jsInputs[3] > 0.9:
                 jsInputs[3] = 0.9
-            self.brakeCmd = ((0.9 - jsInputs[3]) / 1.8) ** 2.0
+            self.brakeCmd = ((0.9 - jsInputs[3]) / 1.8)
 
-            print(self.steerCmd, self.throttleCmd, self.brakeCmd )
             control = carla.VehicleControl()
-            control.throttle = self.throttleCmd * 0.8 + 0.2
-            control.brake = self.brakeCmd * 0.5
+            control.throttle = self.throttleCmd * 0.7 + 0.3
+            control.brake = self.brakeCmd
             control.steer = self.steerCmd
             control.manual_gear_shift = False
             control.hand_brake = False
@@ -90,6 +98,9 @@ class HumanAgent(object):
     def reset(self):
         self.destroy()
         bp = random.choice(self.blueprints)
+        if bp.has_attribute('color'):
+            color = random.choice(bp.get_attribute('color').recommended_values)
+            bp.set_attribute('color', color)
 
         while self.player is None:
             spawn_point = random.choice(self.spawn_points)
@@ -101,14 +112,14 @@ class HumanAgent(object):
 
 
         physics_control = self.player.get_physics_control()
-        physics_control.drag_coefficient = 1.0
-        physics_control.max_rpm = 3000.0
+        physics_control.drag_coefficient = 2.0
+        physics_control.max_rpm = 5000.0
         #physics_control.damping_rate_full_throttle = 0.25
         #physics_control.damping_rate_zero_throttle_clutch_disengaged = 5.0
         #physics_control.moi = 4.0
         self.player.apply_physics_control(physics_control)
 
-    def render(self, image):
+    def render(self, image, fps):
         if self.front_camera != None:
             if self.front_camera.image is not None:
                 image[:] = self.front_camera.image
@@ -121,10 +132,13 @@ class HumanAgent(object):
                 im = cv2.copyMakeBorder(self.rightside_camera.image, 10, 10, 20, 0, cv2.BORDER_CONSTANT, None, value = 0)
                 image[0:560, 2000:2560] = im
 
-        cv2.rectangle(image, (1440, 1240), (1960, 1440), (0, 0, 0), -1)
-        cv2.putText(image, "Steer : %.3f" % self.steerCmd, (1460, 1260), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255))
-        cv2.putText(image, "Throttle : %.3f" % self.throttleCmd, (1460, 1320), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255))
-        cv2.putText(image, "Brake : %.3f" % self.brakeCmd, (1460, 1380), cv2.FONT_HERSHEY_SIMPLEX, 1.5, (255, 255, 255))
+        cv2.rectangle(image, (600, 1240), (1960, 1440), (0, 0, 0), -1)
+        cv2.putText(image, "FPS: " + str(fps), (0, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0))
+        cv2.putText(image, "%3d" % int(self.velocity * 3.6), (640, 1360), cv2.FONT_HERSHEY_SIMPLEX, 4, (0, 255, 0))
+ 
+        cv2.putText(image, "Steer : %.3f" % self.steerCmd, (1460, 1280), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255))
+        cv2.putText(image, "Throttle : %.3f" % self.throttleCmd, (1460, 1330), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255))
+        cv2.putText(image, "Brake : %.3f" % self.brakeCmd, (1460, 1380), cv2.FONT_HERSHEY_SIMPLEX, 1.2, (255, 255, 255))
 
     def destroy(self):
         if self.front_camera != None:

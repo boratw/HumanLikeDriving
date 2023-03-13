@@ -17,10 +17,9 @@ from carla import ColorConverter as cc
 import numpy as np
 import cv2
 import random
-import pygame
 
 import re
-from human_agent import HumanAgent
+from classic_agent import ClassicAgent
 from map_reader import LaneInfo
 
   
@@ -43,8 +42,6 @@ def find_weather(target = None):
         
 
 try:
-    pygame.init()
-    clock = pygame.time.Clock()
 
     client = carla.Client("localhost", 2000) 
     client.set_timeout(2.0)
@@ -55,33 +52,34 @@ try:
     settings.max_substep_delta_time = 0.01
     settings.max_substeps = 20
     settings.synchronous_mode = True
-    settings.no_rendering_mode = True
+    settings.no_rendering_mode = False
     world.apply_settings(settings)
     world.set_weather(find_weather('Clear Noon'))
 
 
     laneinfo = LaneInfo(world)
-    hero = HumanAgent(world, client)
-    hero.reset()
-    display = np.zeros((1440, 2560, 3), dtype=np.uint8)
-    while True:
-        hero.step()
-        hero.render(display, clock.get_fps())
+    npcs = [ClassicAgent(world, client, laneinfo) for _ in range(1)]
 
-        clock.tick_busy_loop(20)
-        world.tick()
-        cv2.imshow("game", display)
-        if cv2.waitKey(1) == 27:
-            break
+    for iter in range(1000):
+        for npc in npcs:
+            npc.reset()
+
+        for npc in npcs:
+            npc.assign_others([n.player for n in npcs if n != npc])
+
+        for step in range(2000):
+            for npc in npcs:
+                npc.step()
+            world.tick()
 
 finally:
-    pygame.quit()
     
     settings = world.get_settings()
     settings.synchronous_mode = False
     settings.no_rendering_mode = False
     world.apply_settings(settings)
-    hero.destroy()
+    for npc in npcs:
+        npc.destroy()
     print("All cleaned up!")
 
 
