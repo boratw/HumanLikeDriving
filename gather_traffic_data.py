@@ -26,6 +26,7 @@ import carla
 import numpy as np
 
 from carla import VehicleLightState as vls
+from carla import TrafficLightState as tls
 
 import random
 import pickle
@@ -69,7 +70,7 @@ try:
     traffic_manager.set_synchronous_mode(True)
     settings.substepping = True
     settings.max_substep_delta_time = 0.01
-    settings.max_substeps = 20
+    settings.max_substeps = 10
     settings.synchronous_mode = True
     settings.fixed_delta_seconds = 0.05
     settings.no_rendering_mode = True
@@ -161,8 +162,10 @@ try:
 
                     tr = actor.get_transform()
                     v = actor.get_velocity()
+                    tlight = actor.get_traffic_light_state()
+                    fail = actor.get_failure_state()
 
-                    state = [tr.location.x, tr.location.y, tr.rotation.yaw, v.x, v.y]
+                    state = [tr.location.x, tr.location.y, tr.rotation.yaw, v.x, v.y, tlight, fail]
                     state_vector.append(state)
 
                 world.tick()
@@ -174,7 +177,7 @@ try:
             save_obj["params"] = params
             save_obj["state_vectors"] = state_vectors
             save_objs.append(save_obj)
-        with open("data/gathered_from_npc/data_" + str(exp) + ".pkl","wb") as fw:
+        with open("data/gathered_from_npc2/data_" + str(exp) + ".pkl","wb") as fw:
             pickle.dump(save_objs, fw)
 
 

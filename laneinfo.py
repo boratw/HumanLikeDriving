@@ -110,13 +110,13 @@ class RouteTracer(object):
                         d1 = d3
                 else:
                     d1 = d2
-            d1, nextlineused = self.Follow(x, y, d1)
+            d1, nextlineused = self.Follow(x, y, yaw, d1)
             if nextlineused and d2 != None:
-                d2, _ = self.Follow(x, y, d2)
+                d2, _ = self.Follow(x, y, yaw, d2)
             else:
                 d2 = d1
             if nextlineused and d3 != None:
-                d3, _ = self.Follow(x, y, d3)
+                d3, _ = self.Follow(x, y, yaw, d3)
             else:
                 d3 = d1
                 
@@ -192,7 +192,7 @@ class RouteTracer(object):
         self.laneid = minlane
         self.laneindex = minindex
 
-    def Follow(self, x, y, nextlaneid):
+    def Follow(self, x, y, yaw, nextlaneid):
         poslist = self.laneinfo.lanes[self.laneid]["pos"]
         posindex = self.laneindex
         laneid = None
@@ -232,7 +232,8 @@ class RouteTracer(object):
             curx += rx * dremain
             cury += ry * dremain
             rremain -= dremain
-            res.extend([curx, cury])
+            nx, ny = rotate(curx - x, cury - y, yaw)
+            res.extend([curx - x, cury - y])
         return res, (laneid != None)
             
     def Reset(self):
@@ -249,3 +250,5 @@ class LaneType(Enum):
     Left = 2
     Right = 3
     
+def rotate(posx, posy, yaw):
+    return posx * np.sin(yaw) + posy * np.cos(yaw), posx * np.cos(yaw) - posy * np.sin(yaw)

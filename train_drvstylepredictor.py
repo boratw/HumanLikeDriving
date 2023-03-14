@@ -60,8 +60,8 @@ with sess.as_default():
                         if traced != None and random.random() < 0.1:
                             history.append([state_vector[i], traced, params[i]])
 
-            for step in range(32):
-                dic = random.sample(range(len(history)), 128)
+            for step in range(64):
+                dic = random.sample(range(len(history)), 64)
 
                 state_dic = [history[x][0] for x in dic]
                 route_dic = [history[x][1] for x in dic]

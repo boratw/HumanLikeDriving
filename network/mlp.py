@@ -9,8 +9,9 @@ class MLP:
             name = "MLP"
         else:
             name = "MLP_" + name
-        if hasattr(hidden_nonlns, "__iter__") == False and len(hidden_dims) > 1:
+        if hasattr(hidden_nonlns, "__iter__") == False:
             hidden_nonlns = [hidden_nonlns] * len(hidden_dims)
+        
         with tf.variable_scope(name, reuse=reuse):
             if input_tensor is None:
                 self.layer_input = tf.placeholder(tf.float32, [None, input_dim])
