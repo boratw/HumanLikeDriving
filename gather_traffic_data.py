@@ -117,10 +117,16 @@ try:
             random.shuffle(spawn_points)
             vehicles_list = []
             batch = []
-            params = [ [random.random() * 0.8, random.random() * 0.5, random.random() * 0.05, random.random() * 0.05,
-                        random.random() * 2.0 + 2.0, random.random() * 1.0 - 0.5,  0.6 - random.random() * 0.6]
-                      for _ in range(50) ]
+
+            impatience = [random.random() for _ in range(50) ]
+            unstablility = [random.random() for _ in range(50) ]
+            criminality = [random.random() for _ in range(50) ]
+            adventurousness = [random.random() for _ in range(50) ]
+            distance_to_leading_vehicle = [ (1.5 - adventurousness[i]) * 5. for i in range(50) ]
+            vehicle_lane_offset = [ 0. for i in range(50) ]
+            vehicle_speed = [ (0.5 - adventurousness[i]) * 100. for i in range(50) ]
             state_vectors = []
+
             for n, transform in enumerate(spawn_points):
                 if n >= 50:
                     break
@@ -146,19 +152,26 @@ try:
             all_vehicle_actors = world.get_actors(vehicles_list)
 
             for i, actor in enumerate(all_vehicle_actors):
-                traffic_manager.ignore_lights_percentage(actor, params[i][0] * 100.)
-                traffic_manager.ignore_vehicles_percentage(actor, params[i][1] * 100.)
-                traffic_manager.random_left_lanechange_percentage(actor, params[i][2] * 100.)
-                traffic_manager.random_right_lanechange_percentage(actor, params[i][3] * 100.)
-                traffic_manager.distance_to_leading_vehicle(actor, params[i][4] * 100.)
-                traffic_manager.vehicle_lane_offset(actor, params[i][5])
-                traffic_manager.vehicle_percentage_speed_difference(actor, params[i][6] * 100.)
+                traffic_manager.ignore_lights_percentage(actor, criminality[i] * 10. + impatience[i] * 10.)
+                traffic_manager.ignore_vehicles_percentage(actor, criminality[i] * 10.)
+                traffic_manager.random_left_lanechange_percentage(actor, impatience[i] * 5.)
+                traffic_manager.random_right_lanechange_percentage(actor, impatience[i] * 5.)
+
+                
 
             
             world.tick()
             for step in range(2000):
                 state_vector = []
                 for i, actor in enumerate(all_vehicle_actors):
+
+                    distance_to_leading_vehicle[i] = distance_to_leading_vehicle[i] * 0.95 + (1.5 - adventurousness[i]) * 0.25 + random.uniform(-unstablility[i] * 0.15, unstablility[i] * 0.15)
+                    vehicle_lane_offset[i] = vehicle_lane_offset[i] * 0.95 + random.uniform(-unstablility[i] * 0.075, unstablility[i] * 0.075)
+                    vehicle_speed[i] = vehicle_speed[i] * 0.95 + (0.5 - adventurousness[i]) * 5. + random.uniform(-unstablility[i] * 2.5, unstablility[i] * 2.5)
+
+                    traffic_manager.distance_to_leading_vehicle(actor, distance_to_leading_vehicle[i] )
+                    traffic_manager.vehicle_lane_offset(actor, vehicle_lane_offset[i])
+                    traffic_manager.vehicle_percentage_speed_difference(actor, vehicle_speed[i])
 
                     tr = actor.get_transform()
                     v = actor.get_velocity()
@@ -174,10 +187,10 @@ try:
 
 
             save_obj = {}
-            save_obj["params"] = params
+            save_obj["params"] = [ [impatience[i], unstablility[i], criminality[i], adventurousness[i]] for i in range(50) ]
             save_obj["state_vectors"] = state_vectors
             save_objs.append(save_obj)
-        with open("data/gathered_from_npc2/data_" + str(exp) + ".pkl","wb") as fw:
+        with open("data/gathered_from_param1_npc/data_" + str(exp) + ".pkl","wb") as fw:
             pickle.dump(save_objs, fw)
 
 

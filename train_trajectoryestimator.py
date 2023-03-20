@@ -38,7 +38,7 @@ def rotate(posx, posy):
 tf.disable_eager_execution()
 sess = tf.Session()
 with sess.as_default():
-    learner = TrajectoryEstimator(regularizer_weight=0.01, use_regen_loss=True)
+    learner = TrajectoryEstimator(regularizer_weight=0.01, latent_len=4, traj_len=10, use_regen_loss=True)
     learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
     sess.run(tf.global_variables_initializer())
     learner.network_initialize()
@@ -46,8 +46,8 @@ with sess.as_default():
 
 
     for epoch in range(1, 10000):
-        pkl_index = random.randrange(7)
-        with open("data/gathered_from_npc2/data_" + str(pkl_index) + ".pkl","rb") as fr:
+        pkl_index = random.randrange(10)
+        with open("data/gathered_from_param1_npc/data_" + str(pkl_index) + ".pkl","rb") as fr:
             data = pickle.load(fr)
         print("Epoch " + str(epoch) + " Start with data " + str(pkl_index))
 
@@ -82,9 +82,9 @@ with sess.as_default():
                                     other_vcs = np.array(sorted(other_vcs, key=lambda s: s[5]))
                                     velocity = np.sqrt(state_vector[i][3] ** 2 + state_vector[i][4] ** 2)
                                     route = []
-                                    for j in range(20, 120, 20):
-                                        relposx = state_vectors[step+j][i][0] - state_vectors[step+j - 20][i][0]
-                                        relposy = state_vectors[step+j][i][1] - state_vectors[step+j - 20][i][1]
+                                    for j in range(10, 110, 10):
+                                        relposx = state_vectors[step+j][i][0] - state_vector[i][0]
+                                        relposy = state_vectors[step+j][i][1] - state_vector[i][1]
                                         px, py = rotate(relposx, relposy)
                                         route.append([px, py])
                                     if np.sqrt(px * px + py * py) > 1. or random.random() < 0.01:
