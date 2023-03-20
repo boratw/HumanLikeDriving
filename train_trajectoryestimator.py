@@ -31,13 +31,14 @@ history = []
 log_name = datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
 log_file = open("train_log/TrajectoryEstimator/log_" + log_name + ".txt", "wt")
 
-def rotate(posx, posy, yaw):
-    return posx * np.sin(yaw) + posy * np.cos(yaw), posx * np.cos(yaw) - posy * np.sin(yaw)
+def rotate(posx, posy):
+    return posx * yawcos - posy * yawsin, posx * yawsin + posy * yawcos
+
 
 tf.disable_eager_execution()
 sess = tf.Session()
 with sess.as_default():
-    learner = TrajectoryEstimator()
+    learner = TrajectoryEstimator(regularizer_weight=0.01, use_regen_loss=True)
     learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
     sess.run(tf.global_variables_initializer())
     learner.network_initialize()
@@ -57,48 +58,54 @@ with sess.as_default():
 
                 state_vectors = data[exp_index]["state_vectors"]
                 agent_count = len(data[exp_index]["state_vectors"][0])
-                for step, state_vector in enumerate(state_vectors[:-20]):
+                for step, state_vector in enumerate(state_vectors[:-120]):
                     for i in range(agent_count):
                         if state_vector[i][6] == carla.VehicleFailureState.NONE:
-                            if random.random() < 0.1:
+                            if random.random() < 0.25:
                                 traced = routetracers[i].Trace(state_vector[i][0], state_vector[i][1], state_vector[i][2])
                                 if traced != None:
                                     other_vcs = []
+                                    yawsin = np.sin(state_vector[i][2]  * -0.017453293)
+                                    yawcos = np.cos(state_vector[i][2]  * -0.017453293)
                                     for j in range(agent_count):
                                         if i != j:
                                             relposx = state_vector[j][0] - state_vector[i][0]
                                             relposy = state_vector[j][1] - state_vector[i][1]
-                                            px, py = rotate(relposx, relposy, state_vector[i][2]  * 0.017453293)
-                                            vx, vy = rotate(state_vector[j][3], state_vector[j][4], state_vector[i][2]  * 0.017453293)
-                                            relyaw = state_vector[j][2] - state_vector[i][2]
+                                            px, py = rotate(relposx, relposy)
+                                            vx, vy = rotate(state_vector[j][3], state_vector[j][4])
+                                            relyaw = (state_vector[j][2] - state_vector[i][2])   * 0.017453293
                                             if relyaw < -np.pi:
                                                 relyaw += 2 * np.pi
-                                            elif relyaw > -np.pi:
+                                            elif relyaw > np.pi:
                                                 relyaw -= 2 * np.pi
                                             other_vcs.append([relposx, relposy, relyaw, vx, vy, np.sqrt(relposx * relposx + relposy * relposy)])
                                     other_vcs = np.array(sorted(other_vcs, key=lambda s: s[5]))
                                     velocity = np.sqrt(state_vector[i][3] ** 2 + state_vector[i][4] ** 2)
                                     route = []
-                                    for j in range(0, 20, 2):
-                                        relposx = state_vectors[step+j][i][0] - state_vector[i][0]
-                                        relposy = state_vectors[step+j][i][1] - state_vector[i][1]
-                                        px, py = rotate(relposx, relposy, state_vector[i][2]  * 0.017453293)
+                                    for j in range(20, 120, 20):
+                                        relposx = state_vectors[step+j][i][0] - state_vectors[step+j - 20][i][0]
+                                        relposy = state_vectors[step+j][i][1] - state_vectors[step+j - 20][i][1]
+                                        px, py = rotate(relposx, relposy)
                                         route.append([px, py])
-
-                                    history.append( [[velocity, state_vector[i][5]], traced, other_vcs[:8, :5], route])
+                                    if np.sqrt(px * px + py * py) > 1. or random.random() < 0.01:
+                                        history.append( [[velocity, state_vector[i][5]], traced, other_vcs[:8, :5], route])
 
 
                         
-
+            random.shuffle(history)
+            restore = []
             for step in range(100):
-                dic = random.sample(range(len(history)), 128)
+                target = list(range(step * 128, step * 128 + 128))
+                state_dic = [history[x][0] for x in target]
+                route_dic = [history[x][1] for x in target]
+                othervcs_dic = [history[x][2] for x in target]
+                target_dic = [history[x][3] for x in target]
 
-                state_dic = [history[x][0] for x in dic]
-                route_dic = [history[x][1] for x in dic]
-                othervcs_dic = [history[x][2] for x in dic]
-                target_dic = [history[x][3] for x in dic]
+                res = learner.optimize_batch(state_dic, route_dic, othervcs_dic, target_dic)
+                ressorted = sorted(zip(res, target), key=lambda s: s[0])
+                history.extend([history[x[1]] for x in ressorted[32:] if random.random() < 0.9])
 
-                learner.optimize_batch(state_dic, route_dic, othervcs_dic, target_dic)
+            history = history[12800:]
 
             learner.log_print()
             log_file.write(str(epoch) + "\t" + str(iteration) + learner.current_log() + "\n")

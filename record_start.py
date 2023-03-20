@@ -21,7 +21,6 @@ import pygame
 
 import re
 from human_agent import HumanAgent
-from map_reader import LaneInfo
 
   
 def find_weather(target = None):
@@ -60,7 +59,6 @@ try:
     world.set_weather(find_weather('Clear Noon'))
 
 
-    laneinfo = LaneInfo(world)
     hero = HumanAgent(world, client)
     hero.reset()
     display = np.zeros((1440, 2560, 3), dtype=np.uint8)

@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script src="drawcanvas.js"></script>
+    <script src="eventhandler.js"></script>
+    <script src="datahandler.js"></script>
+    <script>
+        function OnLoad()
+        {
+            GenerateDocument();
+            InitCanvas();
+            AssignEventHandlers();
+            RequestCurrentMap();
+            DrawCanvas();
+        }
+    </script>
+    <style>
+        .latentslider
+        {
+            width:360px;
+            margin:0px;
+        }
+        .latentslider::-moz-range-track
+        {
+            background-color: silver;
+            height: 10px;
+        }
+        .latentslider::-ms-track
+        {
+            background-color: silver;
+            height: 10px;
+        }
+        .latentslider::-webkit-slider-runnable-track
+        {
+            background-color: silver;
+            height: 10px;
+        }
+        .latentbox
+        {
+            background-color: black;
+            margin-left:40px;
+            width: 360px;
+            height: 20px;
+        }
+        .latentinnerbox
+        {
+            background-color: #0f0;
+            height: 100%;
+            margin:0px;
+            position:relative;
+            left: 160px;
+            width: 40px;
+        }
+    </style>
+</head>
+<body onload="OnLoad()">
+    <div style="display:flex; flex-direction:row;">
+        <canvas style="width:640px; height:640px;" id="canvas" width="640" height="640"></canvas>
+        <div style="padding: 16px;" id="board">
+            <input style="width:480px;" id="slider_step" type="range" min="0" max="100" value="0">
+            <div>
+                <input  id="button_d100" style="width:4em; height:2em;"type="button" value="-100">
+                <input  id="button_d20" style="width:4em; height:2em;"type="button" value="-20">
+                Step : 
+                <input  id="textbox_step" style="width:10em;"type="input" value="0">
+                <input  id="button_i20" style="width:4em; height:2em;"type="button" value="+20">
+                <input  id="button_i100" style="width:4em; height:2em;"type="button" value="+100">
+            </div>
+            <div style="padding-top: 16px;">
+                <input type="checkbox" id="checkbox_blur" checked>
+                <label for="checkbox_blur">Show Safety Potential</label>
+            </div>
+        </div>
+    
+    </div>
+    <div style="display:none;">
+        <img id="world_background" src="lanemap_world10.png"/>
+    </div>
+</body>
+</html>

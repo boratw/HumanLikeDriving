@@ -1,24 +1,25 @@
 import tensorflow.compat.v1 as tf
 import numpy as np
 from network.mlp import MLP
-from network.vae import VAE
+from network.vae import VAE, VAE_Reverse
 
 
 
 class TrajectoryEstimator():
-    def __init__(self, name=None, reuse=False, learner_lr=0.001, regularizer_weight=0.001):
+    def __init__(self, name=None, reuse=False, learner_lr=0.0001, loss_magnifier=1., regularizer_weight=0.001, use_regen_loss=False, regenerate_weight=0.01):
 
         if name == None:
             self.name = "TrajectoryEstimator"
         else:
             self.name = "TrajectoryEstimator" + name
+        self.use_regen_loss = use_regen_loss
         
         with tf.variable_scope(self.name, reuse=reuse):
 
             self.layer_input_state = tf.placeholder(tf.float32, [None, 2])
             self.layer_input_route = tf.placeholder(tf.float32, [None, 3, 10])
             self.layer_input_othervcs = tf.placeholder(tf.float32, [None, 8, 5])
-            self.layer_input_traj = tf.placeholder(tf.float32, [None, 10, 2])
+            self.layer_input_traj = tf.placeholder(tf.float32, [None, 5, 2])
 
             layer_input_route_reshaped = tf.reshape(self.layer_input_route, [-1, 30])
 
@@ -30,17 +31,27 @@ class TrajectoryEstimator():
             self.othervcs_embedding = tf.reduce_sum(othervcs_embeddings, axis=0)
 
             self.layer_input = tf.concat([self.layer_input_state, layer_input_route_reshaped, self.othervcs_embedding], axis=1)
-            self.layer_output = tf.reshape(self.layer_input_traj, [-1, 20])
+            self.layer_output = tf.reshape(self.layer_input_traj, [-1, 10])
 
-            self.vae = VAE(20, 8, [64, 64, 64], hidden_nonlns = tf.nn.tanh, input_tensor=self.layer_output,
+            self.vae = VAE(10, 8, [128, 64, 128], hidden_nonlns = tf.nn.tanh, input_tensor=self.layer_output,
                            additional_dim=40, additional_tensor=self.layer_input )
+            
+            if use_regen_loss:
+                self.random_input_dist = tf.distributions.Normal(loc=tf.zeros_like(self.vae.mu), scale=tf.ones_like(self.vae.logsig))
+                self.random_input = self.random_input_dist.sample()
+                self.reverse_vae = VAE_Reverse(10, 8, [128, 64, 128], hidden_nonlns = tf.nn.tanh, input_tensor=self.random_input,
+                            additional_dim=40, additional_tensor=self.layer_input, reuse=True )
 
             
-            self.reconstruction_loss = tf.reduce_mean((self.vae.layer_output - self.layer_output) ** 2)
-            self.loss = self.reconstruction_loss + self.vae.regularization_loss * regularizer_weight
+            self.reconstruction_loss = tf.reduce_mean((self.vae.layer_output - self.layer_output) ** 2, axis=1)
+            self.loss = tf.reduce_mean(self.reconstruction_loss) * loss_magnifier + self.vae.regularization_loss * regularizer_weight
+            if use_regen_loss:
+                self.regenerate_loss = tf.reduce_mean(self.reverse_vae.dist.log_prob(self.random_input), axis=0)
+                self.loss -= tf.reduce_mean(self.regenerate_loss)  * regenerate_weight
             self.mu_var = tf.math.reduce_variance(self.vae.mu, axis=0)
             self.logsig = tf.reduce_mean(self.vae.logsig, axis=0)
 
+            self.route_output = tf.reshape(self.vae.latent_decoder.layer_output, ([-1, 5, 2]))
 
             self.optimizer = tf.train.AdamOptimizer(learner_lr)
             self.train_action = self.optimizer.minimize(loss = tf.reduce_sum(self.loss))
@@ -56,43 +67,67 @@ class TrajectoryEstimator():
 
     def network_initialize(self):
         self.log_loss_rec = 0.
-        self.log_loss_reg = 0.
+        self.log_loss_regul = 0.
         self.log_loss_muvar = np.array([0.] * 8)
         self.log_loss_logsig = np.array([0.] * 8)
+        self.log_loss_regen = np.array([0.] * 8)
         self.log_num = 0
 
     def network_update(self):
         self.log_loss_rec = 0.
-        self.log_loss_reg = 0.
+        self.log_loss_regul = 0.
         self.log_loss_muvar = np.array([0.] * 8)
         self.log_loss_logsig = np.array([0.] * 8)
+        self.log_loss_regen = np.array([0.] * 8)
         self.log_num = 0
             
     def optimize_batch(self, input_state, input_route, input_othervcs, input_traj):
         input_list = {self.layer_input_state : input_state, self.layer_input_route: input_route, 
                       self.layer_input_othervcs : input_othervcs, self.layer_input_traj : input_traj}
         sess = tf.get_default_session()
-        _, l1, l2, l3, l4 = sess.run([self.train_action, self.reconstruction_loss, self.vae.regularization_loss,
-                                      self.mu_var, self.logsig],input_list)
-
-        self.log_loss_rec = l1
-        self.log_loss_reg = l2
-        self.log_loss_muvar = l3
-        self.log_loss_logsig = l4
+        if self.use_regen_loss:
+            _, l1, l2, l3, l4, l5 = sess.run([self.train_action, self.reconstruction_loss, self.vae.regularization_loss,
+                                        self.mu_var, self.logsig, self.regenerate_loss],input_list)
+            self.log_loss_regen += l5
+        else:
+            _, l1, l2, l3, l4 = sess.run([self.train_action, self.reconstruction_loss, self.vae.regularization_loss,
+                                        self.mu_var, self.logsig],input_list)
+        
+        self.log_loss_rec += np.mean(l1)
+        self.log_loss_regul += l2
+        self.log_loss_muvar += l3
+        self.log_loss_logsig += l4
         self.log_num += 1
+        return l1
+    
+    def get_latents(self, input_state, input_route, input_othervcs, input_traj):
+        input_list = {self.layer_input_state : input_state, self.layer_input_route: input_route, 
+                      self.layer_input_othervcs : input_othervcs, self.layer_input_traj : input_traj}
+        sess = tf.get_default_session()
+        mu, var = sess.run([self.vae.mu, self.vae.sig], input_list)
+        return mu, var
+    
+    def get_routes(self, input_state, input_route, input_othervcs, input_latent):
+        input_list = {self.layer_input_state : input_state, self.layer_input_route: input_route, 
+                      self.layer_input_othervcs : input_othervcs, self.vae.layer_latent : input_latent}
+        sess = tf.get_default_session()
+        res = sess.run(self.route_output, input_list)
+        return res
 
     def log_caption(self):
-        return "\t"  + self.name + "_ReconLoss\t"  + self.name + "_RegLoss\t"  \
-            + self.name + "_MuVar\t\t\t\t\t\t\t\t" + self.name + "_Logsig\t\t\t\t\t\t\t"
+        return "\t"  + self.name + "_ReconLoss\t"  + self.name + "_RegulLoss\t" \
+            + self.name + "_MuVar\t\t\t\t\t\t\t\t" + self.name + "_Logsig\t\t\t\t\t\t\t"  + self.name + "_RegenLoss\t\t\t\t\t\t\t"
 
     def current_log(self):
-        return "\t" + str(self.log_loss_rec / self.log_num) + "\t" + str(self.log_loss_reg / self.log_num) + "\t" \
+        return "\t" + str(self.log_loss_rec / self.log_num) + "\t" + str(self.log_loss_regul / self.log_num) + "\t" \
             + "\t".join([str(self.log_loss_muvar[i] / self.log_num) for i in range(8)]) + "\t" \
-            + "\t".join([str(self.log_loss_logsig[i] / self.log_num) for i in range(8)])
+            + "\t".join([str(self.log_loss_logsig[i] / self.log_num) for i in range(8)])+ "\t" \
+            + "\t".join([str(self.log_loss_regen[i] / self.log_num) for i in range(8)])
 
     def log_print(self):
         print ( self.name \
             + "\n\tReconLoss         : " + str(self.log_loss_rec / self.log_num) \
-            + "\n\tRegLoss           : " + str(self.log_loss_reg / self.log_num) \
+            + "\n\tRegulLoss         : " + str(self.log_loss_regul / self.log_num) \
             + "\n\tMuVar             : " + " ".join([str(self.log_loss_muvar[i] / self.log_num)[:8] for i in range(8)]) \
-            + "\n\tLogsig            : " + " ".join([str(self.log_loss_logsig[i] / self.log_num)[:8] for i in range(8)]))
+            + "\n\tLogsig            : " + " ".join([str(self.log_loss_logsig[i] / self.log_num)[:8] for i in range(8)]) \
+            + "\n\tRegenLoss         : " + " ".join([str(self.log_loss_regen[i] / self.log_num)[:8] for i in range(8)]))
