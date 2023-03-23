@@ -87,7 +87,7 @@ class VAE_Reverse:
                 layer_decoder_input = tf.concat([self.layer_input, self.layer_additional], axis=1)
                 decoder_input_dim = latent_dim + additional_dim
             else:
-                layer_decoder_input = self.x
+                layer_decoder_input = self.layer_input
                 decoder_input_dim = latent_dim
 
             self.decoder = MLP(decoder_input_dim, input_dim, hidden_dims[::-1], hidden_nonlns, reuse=reuse,

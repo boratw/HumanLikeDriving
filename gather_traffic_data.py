@@ -177,9 +177,17 @@ try:
                     v = actor.get_velocity()
                     tlight = actor.get_traffic_light_state()
                     fail = actor.get_failure_state()
+                    try:
+                        traj = traffic_manager.get_all_actions(actor)
+                        traj_pos = [ [t[0], t[1].transform.location.x, t[1].transform.location.y, t[1].transform.rotation.yaw] for t in traj ]
+                        if i == 0:
+                            print(traj_pos)
+                    except:
+                        traj_pos = []
 
-                    state = [tr.location.x, tr.location.y, tr.rotation.yaw, v.x, v.y, tlight, fail]
+                    state = [tr.location.x, tr.location.y, tr.rotation.yaw, v.x, v.y, tlight, fail, traj_pos]
                     state_vector.append(state)
+                    
 
                 world.tick()
                 state_vectors.append(state_vector)
@@ -190,7 +198,7 @@ try:
             save_obj["params"] = [ [impatience[i], unstablility[i], criminality[i], adventurousness[i]] for i in range(50) ]
             save_obj["state_vectors"] = state_vectors
             save_objs.append(save_obj)
-        with open("data/gathered_from_param1_npc/data_" + str(exp) + ".pkl","wb") as fw:
+        with open("data/gathered_from_param2_npc/data2_" + str(exp) + ".pkl","wb") as fw:
             pickle.dump(save_objs, fw)
 
 

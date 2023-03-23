@@ -11,7 +11,7 @@ let half_viewport_height = 320;
 
 const carla_scale = 10.55;
 const carla_x = 1410;
-const carla_y = 1050;
+const carla_y = 1040;
 const carla_rotate = 0;
 
 var clicked = -1;

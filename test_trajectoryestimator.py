@@ -24,9 +24,11 @@ from visualizer.server import VisualizeServer
 
 pkl_index = 0
 exp_index = 1
-read_step_count = 1000
+read_step_count = 1990
 current_step = 0
 latent_sampling_num = 20
+latent_len=8
+traj_len=5
 
 def SendCurstate(step):
     step = int(step[0])
@@ -45,7 +47,7 @@ def SendCurstate(step):
 
     res = res[:-3] + "],\"latent\":[[["
     for i in range(num_agent):
-        for j in range(8):
+        for j in range(latent_len):
             res += str(latents[step][i][0][j]) + "," + str(latents[step][i][1][j]) + "],["
         res = res[:-2] + "],[["
 
@@ -63,15 +65,15 @@ def SendCurstate(step):
     return res
 
 def SendExpInfo(nothing):
-    res = "{\"max_step\":" + str(read_step_count) + "}"
+    res = "{\"max_step\":" + str(read_step_count) + \
+        ", \"latent_len\":" + str(latent_len) + "}"
     return res
 
 def SendLatentOutput(list):
     if current_step >= 100:
-        print(list)
         with sess.as_default():
             i = int(list[0])
-            target_dic = [[float(list[x + 1]) for x in range(8)]]
+            target_dic = [[float(list[x + 1]) for x in range(latent_len)]]
             state_vector = state_vectors[current_step]
             global yawsin
             global yawcos
@@ -106,14 +108,16 @@ def SendLatentOutput(list):
             relposx = 0.
             relposy = 0.
             p.append([state_vector[i][0], state_vector[i][1]])
-            for j in range(4):
-                relposx = relposx * 0.5 + abs(res[0][j][0])
-                relposy = relposy * 0.5 + res[0][j][1]
+            for j in range(traj_len):
+                relposx = relposx * 0.75 + abs(res[0][j][0])
+                relposy = relposy * 0.75 + res[0][j][1]
+                #relposx = res[0][j][0]
+                #relposy = res[0][j][1]
                 px, py = rotate(relposx, relposy)
                 p.append([px + state_vector[i][0], py + state_vector[i][1]])
             
             res = "{\"predicted\":[["
-            for k in range(5):
+            for k in range(traj_len):
                 res += str(p[k][0]) + "," + str(p[k][1]) + "],["
             res = res[:-2] + "]}"
             return res
@@ -133,11 +137,11 @@ predicteds = []
 tf.disable_eager_execution()
 sess = tf.Session()
 with sess.as_default():
-    learner = TrajectoryEstimator(regularizer_weight=0.01, use_regen_loss=True)
+    learner = TrajectoryEstimator(regularizer_weight=0.01, latent_len=latent_len, traj_len=traj_len, use_regen_loss=True)
     learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
-    learner_saver.restore(sess, "train_log/TrajectoryEstimator/log_17-03-2023-18-10-05_3500.ckpt")
+    learner_saver.restore(sess, "train_log/TrajectoryEstimator/latent8_param7/log_17-03-2023-18-10-05_3500.ckpt")
 
-    with open("data/gathered_from_npc2/data_" + str(pkl_index) + ".pkl","rb") as fr:
+    with open("data/gathered_from_default_npc2/data_" + str(pkl_index) + ".pkl","rb") as fr:
         data = pickle.load(fr)
 
     state_vectors = data[exp_index]["state_vectors"]
@@ -167,7 +171,7 @@ with sess.as_default():
             velocity = np.sqrt(state_vector[i][3] ** 2 + state_vector[i][4] ** 2)
             route = []
             if step < step_count - 100:
-                for j in range(0, 100, 20):
+                for j in range(100 // traj_len, 100 // traj_len + 100, 100 // traj_len):
                     relposx = state_vectors[step+j][i][0] - state_vector[i][0]
                     relposy = state_vectors[step+j][i][1] - state_vector[i][1]
                     px, py = rotate(relposx, relposy)
@@ -201,9 +205,11 @@ with sess.as_default():
                     relposx = 0.
                     relposy = 0.
                     p.append([state_vector[i][0], state_vector[i][1]])
-                    for j in range(4):
-                        relposx = relposx * 0.5 + abs(res[i][j][0])
-                        relposy = relposy * 0.5 + res[i][j][1]
+                    for j in range(traj_len):
+                        relposx = relposx * 0.75 + abs(res[i][j][0])
+                        relposy = relposy * 0.75 + res[i][j][1]
+                        #relposx = res[i][j][0]
+                        #relposy = res[i][j][1]
                         px, py = rotate(relposx, relposy)
                         p.append([px + state_vector[i][0], py + state_vector[i][1]])
                     predicted[i].append(p)

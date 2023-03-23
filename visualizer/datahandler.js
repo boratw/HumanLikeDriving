@@ -49,8 +49,14 @@ function HandleCurrentExp(response)
 {
     data = JSON.parse(response);
     max_step = data["max_step"];
+    latent_len = data["latent_len"];
 
     document.getElementById("slider_step").max = max_step;
+    for(var i = 0; i < 8; ++i)
+    {
+        if(i >= latent_len)
+            document.getElementById("div_l" + i).hidden = true;
+    }
 
 }
 

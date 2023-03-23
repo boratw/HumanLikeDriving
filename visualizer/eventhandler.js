@@ -6,7 +6,7 @@ function GenerateDocument()
     for(var i = 0; i < 8; ++i)
     {
         document.getElementById("board").innerHTML += 
-        `<div style="padding-top:10px">
+        `<div id="div_l${i}" style="padding-top:10px">
             <span style="width:40px; display:inline-block">
             #${i}
             </span><!--
