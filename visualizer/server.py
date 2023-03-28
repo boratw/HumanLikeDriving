@@ -45,6 +45,9 @@ class VisualizeServer():
             elif ext == "png":
                 content_type = "image/png"
                 cached = True
+            elif ext == "map":
+                content_type = "text/map"
+                cached = True
             else:
                 raise IOError()
                 

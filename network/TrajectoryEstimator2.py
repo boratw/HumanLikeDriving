@@ -6,8 +6,8 @@ from network.vae import VAE, VAE_Reverse
 
 
 class TrajectoryEstimator():
-    def __init__(self, name=None, reuse=False, learner_lr=0.0001, global_latent_len = 4, local_latent_len = 4, traj_len = 5, different_loss_magnifier=0.1, reconstruction_loss_magnifier=1.,
-            global_regularizer_weight=0.1, local_regularizer_weight = 0.01, regenerate_weight=0.1):
+    def __init__(self, name=None, reuse=False, learner_lr=0.0001, global_latent_len = 4, local_latent_len = 4, traj_len = 5, different_loss_magnifier=0.5, reconstruction_loss_magnifier=1.,
+            global_regularizer_weight=0.01, local_regularizer_weight = 0.01, regenerate_weight=0.1):
 
         if name == None:
             self.name = "TrajectoryEstimator"
@@ -33,9 +33,12 @@ class TrajectoryEstimator():
 
             self.global_encoder = MLP(traj_len * 2 + 57, global_latent_len, [128, 64, 32], hidden_nonlns = tf.nn.leaky_relu, input_tensor=self.layer_global_input, name="GlobalEncoder" )
             self.layer_local_input = tf.concat([tf.stop_gradient(self.global_encoder.layer_output), self.layer_input], axis=1)
+            self.layer_local_input_global_target = tf.concat([tf.stop_gradient(self.layer_target_global_latent), self.layer_input], axis=1)
 
             self.local_vae = VAE(traj_len * 2, local_latent_len, [128, 64, 128], hidden_nonlns = tf.nn.leaky_relu, input_tensor=self.layer_output,
                            additional_dim=57 + global_latent_len, additional_tensor=self.layer_local_input, name="LocalVAE" )
+            self.local_vae_global_target = VAE(traj_len * 2, local_latent_len, [128, 64, 128], hidden_nonlns = tf.nn.leaky_relu, input_tensor=self.layer_output,
+                           additional_dim=57 + global_latent_len, additional_tensor=self.layer_local_input_global_target, name="LocalVAE", reuse=True )
             
             self.random_input_dist = tf.distributions.Normal(loc=tf.zeros_like(self.global_encoder.layer_output), scale=tf.ones_like(self.global_encoder.layer_output))
             self.random_global_latent = tf.stop_gradient(self.random_input_dist.sample())
@@ -48,7 +51,7 @@ class TrajectoryEstimator():
             self.global_similar_loss = tf.reduce_mean((self.global_encoder.layer_output - self.layer_target_global_latent) ** 2)
             self.global_different_loss = tf.reduce_mean(tf.math.reduce_variance(self.global_encoder.layer_output, axis=0))
             self.global_regularizer_loss = tf.reduce_mean(self.global_encoder.layer_output ** 2)
-            self.global_loss = self.global_similar_loss  - self.global_different_loss * different_loss_magnifier +  self.global_regularizer_loss * global_regularizer_weight
+            self.global_loss = self.global_similar_loss  - tf.tanh(self.global_different_loss) * different_loss_magnifier +  self.global_regularizer_loss * global_regularizer_weight
 
             
             self.local_reconstruction_loss = tf.reduce_mean((self.local_vae.layer_output - self.layer_output) ** 2)
@@ -59,7 +62,7 @@ class TrajectoryEstimator():
             self.local_mu_var = tf.math.reduce_variance(self.local_vae.mu, axis=0)
             self.local_logsig = tf.reduce_mean(self.local_vae.logsig, axis=0)
 
-            self.route_output = tf.reshape(self.local_vae.latent_decoder.layer_output, ([-1, traj_len, 2]))
+            self.route_output = tf.reshape(self.local_vae_global_target.latent_decoder.layer_output, ([-1, traj_len, 2]))
 
             self.global_optimizer = tf.train.AdamOptimizer(learner_lr)
             self.local_optimizer = tf.train.AdamOptimizer(learner_lr)
@@ -129,6 +132,30 @@ class TrajectoryEstimator():
         return l0
     
 
+    def get_global_latents(self, input_state, input_waypoints, input_othervcs, input_traj):
+        input_list = {self.layer_input_state : input_state, self.layer_input_waypoints: input_waypoints, 
+                      self.layer_input_othervcs : input_othervcs, self.layer_input_traj : input_traj}
+        sess = tf.get_default_session()
+        l0 = sess.run([self.global_encoder.layer_output], input_list)
+        return l0[0]
+    
+    def get_local_latents(self, input_state, input_waypoints, input_othervcs, input_traj, input_global_latent):
+        input_list = {self.layer_input_state : input_state, self.layer_input_waypoints: input_waypoints, 
+                      self.layer_input_othervcs : input_othervcs, self.layer_input_traj : input_traj, 
+                      self.layer_target_global_latent : input_global_latent}
+        sess = tf.get_default_session()
+        mu, var = sess.run([self.local_vae_global_target.mu, self.local_vae_global_target.sig], input_list)
+        return mu, var
+    
+
+    def get_routes(self, input_state, input_waypoints, input_othervcs, input_global_latent, input_local_latent):
+        input_list = {self.layer_input_state : input_state, self.layer_input_waypoints: input_waypoints, 
+                      self.layer_input_othervcs : input_othervcs, self.layer_target_global_latent : input_global_latent,
+                    self.local_vae_global_target.layer_latent : input_local_latent }
+        sess = tf.get_default_session()
+        res = sess.run(self.route_output, input_list)
+        return res
+    
     def log_caption(self):
         return "\t" + self.name + "_GlobalSimLoss\t" + self.name + "_GlobalDiffLoss\t" + self.name + "_GlobalRegulLoss\t" \
             + self.name + "_LocalReconLoss\t"  + self.name + "_LocalRegulLoss\t" \

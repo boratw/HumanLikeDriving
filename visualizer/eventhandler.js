@@ -1,5 +1,6 @@
 let canvasmoving = false;
 let canvasmoved = false;
+let linechart = null;
 
 function GenerateDocument()
 {
@@ -19,6 +20,35 @@ function GenerateDocument()
             </div>
         </div>`
     }
+    linechart = new Chart(document.getElementById('chart'),
+        {
+          type: 'line',
+          data: {},
+          options: {
+              animation: false,
+              elements:{
+                point:{
+                    pointStyle:false
+                }
+              },
+              scales: {
+                  y: {
+                      max: 4,
+                      min: -4,
+                      ticks: {
+                          stepSize: 1
+                      }
+                  },
+                  x: {
+                    ticks: {
+                        stepSize: 100
+                    }
+
+                  }
+            
+              }
+          }
+        });
 }
 
 function AssignEventHandlers()
@@ -52,7 +82,7 @@ function OnCanvasMouseUp(event)
     canvasmoving = false;
     if(!canvasmoved)
     {
-        CanvasClick(event.clientX, event.clientY);
+        CanvasClick(event.offsetX, event.offsetY);
     }
 }
 

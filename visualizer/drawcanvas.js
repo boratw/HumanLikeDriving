@@ -20,7 +20,7 @@ var current_step = 0;
 var vehicles = [];
 var routes = [[]];
 var predicteds = [[]];
-var latents = [[]];
+var latent_data = {};
 var latentoutput = undefined;
 
 let draw_potential = true;
@@ -54,6 +54,7 @@ function DrawCanvas()
     linectx.lineCap = "round";
     linectx.lineJoin = "round";
 
+    /*
     if(draw_potential)
     {
         linectx.filter = "blur(10px)";
@@ -66,27 +67,6 @@ function DrawCanvas()
         linectx.filter = "none";
         linectx.lineWidth = 0.25;
 
-    }
-    if(clicked == -1)
-    {
-        for(var k = 0; k < predicteds.length; ++k)
-        {
-            for(v of predicteds[k])
-            {
-                linectx.beginPath();
-                if(v.length > 1)
-                {
-                    linectx.moveTo(v[0][0], v[0][1]);
-                    for(var i = 1; i < v.length; ++i)
-                    {
-                        linectx.lineTo(v[i][0], v[i][1]);
-                    }
-        
-                }
-                linectx.stroke();
-
-            }
-        }
     }
     else
     {
@@ -124,6 +104,28 @@ function DrawCanvas()
 
         }
     }
+    if(clicked == -1)
+    {
+        for(var k = 0; k < predicteds.length; ++k)
+        {
+            for(v of predicteds[k])
+            {
+                linectx.beginPath();
+                if(v.length > 1)
+                {
+                    linectx.moveTo(v[0][0], v[0][1]);
+                    for(var i = 1; i < v.length; ++i)
+                    {
+                        linectx.lineTo(v[i][0], v[i][1]);
+                    }
+        
+                }
+                linectx.stroke();
+
+            }
+        }
+    }
+    */
 
     drawctx.resetTransform()
     drawctx.fillStyle = "rgb(0, 0, 0)";
@@ -170,7 +172,7 @@ function DrawCanvas()
     visctx.drawImage(drawctx.canvas, 0, 0);
     visctx.drawImage(linectx.canvas, 0, 0);
 
-
+    /*
     if(clicked != -1)
     {
         if(latentoutput == undefined)
@@ -199,6 +201,7 @@ function DrawCanvas()
         }
 
     }
+    */
 }
 
 
@@ -221,4 +224,16 @@ function CanvasClick(x, y)
     latentoutput = undefined;
     DrawCanvas();
 
+    if(clicked != -1)
+    {
+        if(clicked in latent_data)
+        {
+            linechart.data.datasets = latent_data[clicked];
+            linechart.update('none');
+        }
+        else
+        {
+            RequestCurrentAgent();
+        }
+    }
 }
