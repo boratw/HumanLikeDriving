@@ -53,8 +53,8 @@ with sess.as_default():
     history = []
 
     for epoch in range(1, 10000):
-        pkl_index = random.randrange(51)
-        with open("data/gathered_from_param2_npc/data_" + str(pkl_index) + ".pkl","rb") as fr:
+        pkl_index = random.randrange(25)
+        with open("data/gathered_from_param2_npc/data2_" + str(pkl_index) + ".pkl","rb") as fr:
             data = pickle.load(fr)
         print("Epoch " + str(epoch) + " Start with data " + str(pkl_index))
 
@@ -136,6 +136,7 @@ with sess.as_default():
             for x in range(len(cur_history)):
                 if len(global_target[x]) > 10:
                     global_target[x] = np.mean(global_target[x], axis=0)
+                    global_target[x] = global_target[x] / np.sqrt(np.sum(global_target[x] ** 2))
                 else:
                     global_target[x] = None
                     global_target_exist.remove(x)
@@ -150,15 +151,15 @@ with sess.as_default():
                 waypoint_dic = []
                 othervcs_dic = []
                 route_dic = []
-                target_dic = []
+                target_mu_dic = []
                 for x in range(32):
                     state_dic.append(cur_history[agent_dic[x]][step_dic[x]][0])
                     waypoint_dic.append(cur_history[agent_dic[x]][step_dic[x]][1])
                     othervcs_dic.append(cur_history[agent_dic[x]][step_dic[x]][2])
                     route_dic.append(cur_history[agent_dic[x]][step_dic[x]][3] )
-                    target_dic.append(global_target[agent_dic[x]] )
+                    target_mu_dic.append(global_target[agent_dic[x]] )
 
-                global_loss = learner.optimize_global(state_dic, waypoint_dic, othervcs_dic, route_dic, target_dic)
+                global_loss = learner.optimize_global(state_dic, waypoint_dic, othervcs_dic, route_dic, target_mu_dic)
             
             history[exp_index][0] = local_loss + global_loss
             print("Train Step #" + str(iter))
