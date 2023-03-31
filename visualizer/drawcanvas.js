@@ -19,6 +19,7 @@ var clicked = -1;
 var current_step = 0;
 var vehicles = [];
 var routes = [[]];
+var latents = undefined;
 var predicteds = [[]];
 var latent_data = {};
 var latentoutput = undefined;
@@ -54,6 +55,23 @@ function DrawCanvas()
     linectx.lineCap = "round";
     linectx.lineJoin = "round";
 
+    if(latentoutput != undefined)
+    {
+        linectx.strokeStyle = "rgba(255, 0, 0, 1)";
+        linectx.filter = "none";
+        linectx.lineWidth = 0.25;
+        linectx.beginPath();
+        if(latentoutput.length > 1)
+        {
+            linectx.moveTo(latentoutput[0][0], latentoutput[0][1]);
+            for(var i = 1; i < v.length; ++i)
+            {
+                linectx.lineTo(latentoutput[i][0], latentoutput[i][1]);
+            }
+
+        }
+        linectx.stroke();
+    }
     /*
     if(draw_potential)
     {
@@ -204,6 +222,35 @@ function DrawCanvas()
     */
 }
 
+function DrawSliders()
+{
+    if(clicked != -1 && latents != undefined)
+    {
+        for(var i = 0; i < 8; ++i)
+        {
+            box = document.getElementById("box_l" + i)
+            slider = document.getElementById("slider_l" + i)
+            mu = Math.round(latents[clicked][i][0] * 100)
+            l = mu * 0.45 + 180 - latents[clicked][i][1] * 45
+            r = mu * 0.45 + 180 + latents[clicked][i][1] * 45
+            if(l < 0)
+                l = 0
+            else if (l > 360)
+                l = 360
+            if(r < 0)
+                r = 0
+            else if (r > 360)
+                r = 360
+            box.style.left = l + "px"
+            box.style.width = (r-l) + "px"
+            document.getElementById("slider_l" + i).value = mu
+            document.getElementById("value_l" + i).innerHTML = mu / 100
+        }
+
+    }
+
+}
+
 
 function CanvasClick(x, y)
 {
@@ -222,6 +269,7 @@ function CanvasClick(x, y)
     }
     clicked = minidx;
     latentoutput = undefined;
+    DrawSliders();
     DrawCanvas();
 
     if(clicked != -1)

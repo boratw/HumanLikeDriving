@@ -9,12 +9,10 @@ function GenerateDocument()
         document.getElementById("board").innerHTML += 
         `<div id="div_l${i}" style="padding-top:10px">
             <span style="width:40px; display:inline-block">
-            #${i}
+            #${i < 4 ? 'G' + i : 'L' + i}
             </span><!--
             --><input class="latentslider" id="slider_l${i}" type="range" min="-400" max="400" value="0">
-            <span id="value_l${i}">
-                0
-            </span>
+            <span id="value_l${i}">0</span>
             <div class="latentbox">
                 <div class="latentinnerbox" id="box_l${i}"></div>
             </div>

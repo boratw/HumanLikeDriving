@@ -52,6 +52,9 @@ function HandleCurrentMap(response)
     data = JSON.parse(response);
     vehicles = data["state"];
     routes = data["route"];
+    latents = data["latents"];
+
+    DrawSliders();
     DrawCanvas();
 }
 

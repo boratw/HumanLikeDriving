@@ -54,9 +54,9 @@ class TrajectoryEstimator():
 
 
             self.global_similar_loss = tf.reduce_mean((self.global_encoded_latent - self.layer_input_global_target) ** 2)
-            self.global_different_loss = tf.reduce_mean(tf.math.reduce_variance(self.global_encoded_latent, axis=0))
+            self.global_different_loss = tf.reduce_mean(self.global_encoded_latent)
             self.global_regularizer_loss = tf.reduce_mean((self.global_encoded_latent_size - 1.) ** 2)
-            self.global_loss = self.global_similar_loss  - self.global_different_loss * different_loss_magnifier +  self.global_regularizer_loss * global_regularizer_weight
+            self.global_loss = self.global_similar_loss + self.global_different_loss * different_loss_magnifier +  self.global_regularizer_loss * global_regularizer_weight
             
             self.local_reconstruction_loss = tf.reduce_mean((self.local_vae.layer_output - self.layer_output) ** 2)
             self.local_regenerate_loss = tf.reduce_mean((self.global_encoder_random.layer_output - self.random_global_latent) ** 2)

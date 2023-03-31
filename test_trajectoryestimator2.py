@@ -27,7 +27,8 @@ exp_index = 1
 read_step_count = 1990
 current_step = 0
 latent_sampling_num = 20
-latent_len=8
+global_latent_len=4
+local_latent_len=4
 traj_len=10
 
 def SendCurstate(step):
@@ -45,6 +46,16 @@ def SendCurstate(step):
                 res += str(state_vectors[step+j][i][0]) + "," + str(state_vectors[step+j][i][1]) + "],["
         res = res[:-2] + "],[["
 
+    res = res[:-3] + "],\"latents\":[[["
+    for i in range(num_agent):
+        for j in range(global_latent_len):
+            res += str(global_latent[i][0][j]) + "," + str(global_latent[i][1][j]) + "],["
+        print("1")
+        for j in range(local_latent_len):
+            res += str(local_latent_record[i][step][0][j]) + "," + str(local_latent_record[i][step][0][j]) + "],["
+        print("2")
+        res = res[:-2] + "],[["
+
     res = res[:-3] + "]}"
     global current_step
     current_step = step
@@ -52,15 +63,12 @@ def SendCurstate(step):
 
 def SendExpInfo(nothing):
     res = "{\"max_step\":" + str(read_step_count) + \
-        ", \"latent_len\":" + str(latent_len) + "}"
+        ", \"latent_len\":" + str(global_latent_len + local_latent_len) + "}"
     return res
 
 def SendCurVehicle(step):
     i = int(step[0])
-    res = "{\"global_latent\":[["
-    res += str(global_latent[i][0][0]) + "," + str(global_latent[i][0][1]) + "," + str(global_latent[i][0][2]) + "," + str(global_latent[i][0][3]) + "],["
-    res += str(global_latent[i][1][0]) + "," + str(global_latent[i][1][1]) + "," + str(global_latent[i][1][2]) + "," + str(global_latent[i][1][3])
-    res += "]],\"global_latent_record\":[["
+    res = "{\"global_latent_record\":[["
     for l in global_latent_record[i]:
         res += str(l[0]) + "," + str(l[1]) + "," + str(l[2]) + "," + str(l[3]) + "],["
     res = res[:-2] + "],\"local_latent_record\":[["
@@ -71,74 +79,71 @@ def SendCurVehicle(step):
 
 
 def SendLatentOutput(list):
-    if current_step >= 100:
-        with sess.as_default():
-            i = int(list[0])
+    with sess.as_default():
+        i = int(list[0])
 
-            
-            target_global_dic = [[float(list[x]) for x in range(1, 5)]]
-            target_local_dic = [[float(list[x]) for x in range(5, 9)]]
-            state_vector = state_vectors[current_step]
-            global yawsin
-            global yawcos
-            
-            other_vcs = []
-            yawsin = np.sin(state_vector[i][2]  * -0.017453293)
-            yawcos = np.cos(state_vector[i][2]  * -0.017453293)
-            for j in range(agent_count):
-                if i != j:
-                    relposx = state_vector[j][0] - state_vector[i][0]
-                    relposy = state_vector[j][1] - state_vector[i][1]
-                    px, py = rotate(relposx, relposy)
-                    vx, vy = rotate(state_vector[j][3], state_vector[j][4])
-                    relyaw = (state_vector[j][2] - state_vector[i][2])   * 0.017453293
-                    if relyaw < -np.pi:
-                        relyaw += 2 * np.pi
-                    elif relyaw > np.pi:
-                        relyaw -= 2 * np.pi
-                    other_vcs.append([relposx, relposy, relyaw, vx, vy, np.sqrt(relposx * relposx + relposy * relposy)])
-            other_vcs = np.array(sorted(other_vcs, key=lambda s: s[5]))
-            velocity = np.sqrt(state_vector[i][3] ** 2 + state_vector[i][4] ** 2)
-            waypoint = []
-            option = [0., 0., 0.]
-            for j in range(3):
-                if j < len(state_vector[i][7]):
-                    relposx = state_vector[i][7][j][1]
-                    relposy = state_vector[i][7][j][2]
-                    px, py = rotate(relposx, relposy)
-                    if state_vector[i][7][j][0] in ReadOption:
-                        option = ReadOption[state_vector[i][7][j][0]]
-                    else:
-                        print("Unknown RoadOption " + state_vector[i][7][j][0])
-                waypoints.append([option[0], option[1], option[2], px, py])
-
-            state_dic = [[velocity, state_vector[i][5]]]
-            waypoint_dic = [waypoint]
-            othervcs_dic = [other_vcs[:8, :5]]
-            res = learner.get_routes(state_dic, waypoint_dic, othervcs_dic, target_global_dic, target_local_dic)
-
-            p = []
-            yawsin = np.sin(state_vector[i][2]  * 0.017453293)
-            yawcos = np.cos(state_vector[i][2]  * 0.017453293)
-            relposx = 0.
-            relposy = 0.
-            p.append([state_vector[i][0], state_vector[i][1]])
-            for j in range(traj_len):
-                relposx = relposx * 0.75 + abs(res[0][j][0])
-                relposy = relposy * 0.75 + res[0][j][1]
-                #relposx = res[0][j][0]
-                #relposy = res[0][j][1]
+        
+        target_global_dic = [[float(list[x]) for x in range(1, 5)]]
+        target_local_dic = [[float(list[x]) for x in range(5, 9)]]
+        state_vector = state_vectors[current_step]
+        global yawsin
+        global yawcos
+        
+        other_vcs = []
+        yawsin = np.sin(state_vector[i][2]  * -0.017453293)
+        yawcos = np.cos(state_vector[i][2]  * -0.017453293)
+        for j in range(agent_count):
+            if i != j:
+                relposx = state_vector[j][0] - state_vector[i][0]
+                relposy = state_vector[j][1] - state_vector[i][1]
                 px, py = rotate(relposx, relposy)
-                p.append([px + state_vector[i][0], py + state_vector[i][1]])
-            
-            res = "{\"predicted\":[["
-            for k in range(traj_len):
-                res += str(p[k][0]) + "," + str(p[k][1]) + "],["
-            res = res[:-2] + "]}"
-            return res
+                vx, vy = rotate(state_vector[j][3], state_vector[j][4])
+                relyaw = (state_vector[j][2] - state_vector[i][2])   * 0.017453293
+                if relyaw < -np.pi:
+                    relyaw += 2 * np.pi
+                elif relyaw > np.pi:
+                    relyaw -= 2 * np.pi
+                other_vcs.append([relposx, relposy, relyaw, vx, vy, np.sqrt(relposx * relposx + relposy * relposy)])
+        other_vcs = np.array(sorted(other_vcs, key=lambda s: s[5]))
+        velocity = np.sqrt(state_vector[i][3] ** 2 + state_vector[i][4] ** 2)
+        waypoints = []
+        option = [0., 0., 0.]
+        for j in range(3):
+            if j < len(state_vector[i][7]):
+                relposx = state_vector[i][7][j][1]
+                relposy = state_vector[i][7][j][2]
+                px, py = rotate(relposx, relposy)
+                if state_vector[i][7][j][0] in ReadOption:
+                    option = ReadOption[state_vector[i][7][j][0]]
+                else:
+                    print("Unknown RoadOption " + state_vector[i][7][j][0])
+            waypoints.append([option[0], option[1], option[2], px, py])
 
-    else:
-        return "{\"predicted\":[[]]}"
+        state_dic = [[velocity, state_vector[i][5]]]
+        waypoint_dic = [waypoints]
+        othervcs_dic = [other_vcs[:8, :5]]
+        res = learner.get_routes(state_dic, waypoint_dic, othervcs_dic, target_global_dic, target_local_dic)
+
+        p = []
+        yawsin = np.sin(state_vector[i][2]  * 0.017453293)
+        yawcos = np.cos(state_vector[i][2]  * 0.017453293)
+        relposx = 0.
+        relposy = 0.
+        p.append([state_vector[i][0], state_vector[i][1]])
+        for j in range(traj_len):
+            relposx = relposx * 0.75 + abs(res[0][j][0])
+            relposy = relposy * 0.75 + res[0][j][1]
+            #relposx = res[0][j][0]
+            #relposy = res[0][j][1]
+            px, py = rotate(relposx, relposy)
+            p.append([px + state_vector[i][0], py + state_vector[i][1]])
+        
+        res = "{\"predicted\":[["
+        for k in range(traj_len):
+            res += str(p[k][0]) + "," + str(p[k][1]) + "],["
+        res = res[:-2] + "]}"
+        return res
+
 
 
 def rotate(posx, posy):
@@ -162,7 +167,7 @@ with sess.as_default():
     learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
     learner_saver.restore(sess, "train_log/TrajectoryEstimator2/log_29-03-2023-18-14-06_200.ckpt")
 
-    with open("data/gathered_from_param2_npc/data_" + str(pkl_index) + ".pkl","rb") as fr:
+    with open("data/gathered_from_param2_npc/data2_" + str(pkl_index) + ".pkl","rb") as fr:
         data = pickle.load(fr)
 
     state_vectors = data[exp_index]["state_vectors"]
@@ -225,8 +230,14 @@ with sess.as_default():
             for i in range(agent_count):
                 global_latent_record[i].append(latent[i])
 
-    for i in range(agent_count):
-        global_latent.append([np.mean(global_latent_record[i], axis=0), np.var(global_latent_record[i], axis=0)])
+    with open("log.txt", "wt") as f:
+        for i in range(agent_count):
+            global_latent.append([np.mean(global_latent_record[i], axis=0), np.var(global_latent_record[i], axis=0)])
+            f.write("\t".join([str(global_latent[-1][0][j]) for j in range(4)]))
+            f.write("\t")
+            f.write("\t".join([str(j) for j in data[exp_index]["params"][i]]))
+            f.write("\n")
+
               
     global_latent_dic = [x[0] for x in global_latent]
     for step, state_vector in enumerate(state_vectors[:read_step_count]):
