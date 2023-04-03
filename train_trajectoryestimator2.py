@@ -91,8 +91,10 @@ with sess.as_default():
                                 relposy = state_vectors[step+j][i][1] - state_vector[i][1]
                                 px, py = rotate(relposx, relposy)
                                 route.append([px, py])
+                            distance = np.sqrt(px * px + py * py)
                             waypoints = []
                             option = [0., 0., 0.]
+                            px, py = 0., 0.
                             for j in range(3):
                                 if j < len(state_vector[i][7]):
                                     relposx = state_vector[i][7][j][1]
@@ -104,17 +106,59 @@ with sess.as_default():
                                         print("Unknown RoadOption " + state_vector[i][7][j][0])
                                 waypoints.append([option[0], option[1], option[2], px, py])
                                 
-                            if np.sqrt(px * px + py * py) > 1. or random.random() < 0.01:
+                            if distance > 1. or random.random() < 0.01:
                                 history_exp[i].append( [[velocity, state_vector[i][5]], waypoints, other_vcs[:8, :5], route])
             history_exp = [ h for h in history_exp if len(h) > 10]
             history.append([99999999, history_exp])
 
         print("Current History Length : " + str(len(history)))
-        for iter in range(len(history) // 8):
+        for iter in range(len(history)):
             exp_index = random.randrange(len(history))
             cur_history = history[exp_index][1]
-            global_target = [[] for _ in range(len(cur_history))]
-            for step in range(64):
+
+            global_loss_sum = 0
+            local_loss_sum = 0
+            for step in range(16):
+                agent1 = random.randrange(len(cur_history))
+                while len(cur_history[agent1]) < 32:
+                    agent1 = random.randrange(len(cur_history))
+
+                agent2 = random.randrange(len(cur_history))
+                while agent1 == agent2 or len(cur_history[agent2]) < 32:
+                    agent2 = random.randrange(agent_count)
+
+                agent3 = random.randrange(len(cur_history))
+                while agent1 == agent3 or agent2 == agent3 or len(cur_history[agent3]) < 32:
+                    agent3 = random.randrange(len(cur_history))
+
+                step_dic1 = random.choices(list(range(len(cur_history[agent1]))), k=32)
+                step_dic2 = random.choices(list(range(len(cur_history[agent2]))), k=32)
+                step_dic3 = random.choices(list(range(len(cur_history[agent3]))), k=32)
+                
+                state_dic = []
+                waypoint_dic = []
+                othervcs_dic = []
+                route_dic = []
+                for x in step_dic1:
+                    state_dic.append(cur_history[agent1][x][0])
+                    waypoint_dic.append(cur_history[agent1][x][1])
+                    othervcs_dic.append(cur_history[agent1][x][2])
+                    route_dic.append(cur_history[agent1][x][3] )
+                for x in step_dic2:
+                    state_dic.append(cur_history[agent2][x][0])
+                    waypoint_dic.append(cur_history[agent2][x][1])
+                    othervcs_dic.append(cur_history[agent2][x][2])
+                    route_dic.append(cur_history[agent2][x][3] )
+                for x in step_dic3:
+                    state_dic.append(cur_history[agent3][x][0])
+                    waypoint_dic.append(cur_history[agent3][x][1])
+                    othervcs_dic.append(cur_history[agent3][x][2])
+                    route_dic.append(cur_history[agent3][x][3] )
+
+                global_loss = learner.optimize_global(state_dic, waypoint_dic, othervcs_dic, route_dic)
+                global_loss_sum += global_loss
+            
+            for step in range(8):
                 agent_dic = random.choices(list(range(len(cur_history))), k=32)
                 step_dic = [ random.randrange(len(cur_history[x])) for x in agent_dic ]
 
@@ -129,39 +173,9 @@ with sess.as_default():
                     route_dic.append(cur_history[agent_dic[x]][step_dic[x]][3] )
 
                 res, local_loss = learner.optimize_local(state_dic, waypoint_dic, othervcs_dic, route_dic)
-                for x in range(32):
-                    global_target[agent_dic[x]].append(res[x])
+                local_loss_sum += local_loss
 
-            global_target_exist = list(range(len(cur_history)))
-            for x in range(len(cur_history)):
-                if len(global_target[x]) > 10:
-                    global_target[x] = np.mean(global_target[x], axis=0)
-                    global_target[x] = global_target[x] / np.sqrt(np.sum(global_target[x] ** 2))
-                else:
-                    global_target[x] = None
-                    global_target_exist.remove(x)
-            for step in range(64):
-                if len(global_target_exist) > 32:
-                    agent_dic = random.sample(global_target_exist, k=32)
-                else:
-                    agent_dic = global_target_exist
-                step_dic = [ random.randrange(len(cur_history[x])) for x in agent_dic ]
-
-                state_dic = []
-                waypoint_dic = []
-                othervcs_dic = []
-                route_dic = []
-                target_mu_dic = []
-                for x in range(32):
-                    state_dic.append(cur_history[agent_dic[x]][step_dic[x]][0])
-                    waypoint_dic.append(cur_history[agent_dic[x]][step_dic[x]][1])
-                    othervcs_dic.append(cur_history[agent_dic[x]][step_dic[x]][2])
-                    route_dic.append(cur_history[agent_dic[x]][step_dic[x]][3] )
-                    target_mu_dic.append(global_target[agent_dic[x]] )
-
-                global_loss = learner.optimize_global(state_dic, waypoint_dic, othervcs_dic, route_dic, target_mu_dic)
-            
-            history[exp_index][0] = local_loss + global_loss
+            history[exp_index][0] = local_loss_sum + global_loss_sum
             print("Train Step #" + str(iter))
 
         history.sort(key=lambda s: s[0])

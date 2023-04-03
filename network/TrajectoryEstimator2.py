@@ -7,8 +7,8 @@ from network.vencoder import VEncoder
 
 
 class TrajectoryEstimator():
-    def __init__(self, name=None, reuse=False, learner_lr=0.0001, global_latent_len = 4, local_latent_len = 4, traj_len = 5, different_loss_magnifier= 0.5, reconstruction_loss_magnifier=1.,
-            global_regularizer_weight=10., local_regularizer_weight = 0.01, regenerate_weight=0.1):
+    def __init__(self, name=None, reuse=False, learner_lr=0.0001, global_latent_len = 4, local_latent_len = 4, traj_len = 5, different_loss_magnifier= 1., reconstruction_loss_magnifier=1.,
+            global_regularizer_weight=0.1, local_regularizer_weight = 0.01, regenerate_weight=0.1):
 
         if name == None:
             self.name = "TrajectoryEstimator"
@@ -24,7 +24,6 @@ class TrajectoryEstimator():
             self.layer_input_othervcs = tf.placeholder(tf.float32, [None, 8, 5])
             self.layer_input_traj = tf.placeholder(tf.float32, [None, traj_len, 2])
             self.layer_input_global_latent = tf.placeholder(tf.float32, [None, global_latent_len])
-            self.layer_input_global_target = tf.placeholder(tf.float32, [None, global_latent_len])
 
             layer_input_waypoints_reshaped = tf.reshape(self.layer_input_waypoints, [-1, 15])
             layer_input_othervcs_reshaped = tf.reshape(self.layer_input_othervcs, [-1, 40])
@@ -35,7 +34,7 @@ class TrajectoryEstimator():
 
             self.global_encoder = MLP(traj_len * 2 + 57, global_latent_len, [128, 64, 32], hidden_nonlns = tf.nn.leaky_relu, input_tensor=self.layer_global_input, name="GlobalEncoder" )
             self.global_encoded_latent_size = tf.math.sqrt(tf.reduce_sum(self.global_encoder.layer_output ** 2, axis=1, keep_dims=True))
-            self.global_encoded_latent = self.global_encoder.layer_output / (self.global_encoded_latent_size + 1e-7)
+            self.global_encoded_latent = self.global_encoder.layer_output / tf.stop_gradient(self.global_encoded_latent_size + 1e-7)
             self.layer_local_input = tf.concat([tf.stop_gradient(self.global_encoded_latent), self.layer_input], axis=1)
             self.layer_local_input_global_target = tf.concat([tf.stop_gradient(self.layer_input_global_latent), self.layer_input], axis=1)
 
@@ -52,11 +51,21 @@ class TrajectoryEstimator():
             self.random_global_input = tf.concat([self.layer_input, self.local_vae_random.layer_output], axis=1)
             self.global_encoder_random = MLP(traj_len * 2 + 57, global_latent_len, [128, 64, 32], hidden_nonlns = tf.nn.leaky_relu, input_tensor=self.random_global_input, name="GlobalEncoder", reuse=True )
 
-
-            self.global_similar_loss = tf.reduce_mean((self.global_encoded_latent - self.layer_input_global_target) ** 2)
-            self.global_different_loss = tf.reduce_mean(self.global_encoded_latent)
+            global_encoded_latent1, global_encoded_latent2, global_encoded_latent3 = tf.split(self.global_encoded_latent, 3, axis=0)
+            global_encoded_latent1_mean = tf.reduce_mean(global_encoded_latent1, axis=0, keepdims=True)
+            global_encoded_latent2_mean = tf.reduce_mean(global_encoded_latent2, axis=0, keepdims=True)
+            global_encoded_latent3_mean = tf.reduce_mean(global_encoded_latent3, axis=0, keepdims=True)
+            self.global_similar_loss = tf.reduce_mean((global_encoded_latent1 - global_encoded_latent1_mean) ** 2)  \
+                    + tf.reduce_mean((global_encoded_latent2 - global_encoded_latent2_mean) ** 2) \
+                    + tf.reduce_mean((global_encoded_latent3 - global_encoded_latent3_mean) ** 2)
+            self.global_different_loss = tf.reduce_mean((global_encoded_latent1 - global_encoded_latent2_mean) ** 2) \
+                    + tf.reduce_mean((global_encoded_latent1 - global_encoded_latent3_mean) ** 2) \
+                    + tf.reduce_mean((global_encoded_latent2 - global_encoded_latent1_mean) ** 2) \
+                    + tf.reduce_mean((global_encoded_latent2 - global_encoded_latent3_mean) ** 2) \
+                    + tf.reduce_mean((global_encoded_latent3 - global_encoded_latent1_mean) ** 2) \
+                    + tf.reduce_mean((global_encoded_latent3 - global_encoded_latent2_mean) ** 2)
             self.global_regularizer_loss = tf.reduce_mean((self.global_encoded_latent_size - 1.) ** 2)
-            self.global_loss = self.global_similar_loss + self.global_different_loss * different_loss_magnifier +  self.global_regularizer_loss * global_regularizer_weight
+            self.global_loss = self.global_similar_loss - self.global_different_loss * 0.5 * different_loss_magnifier +  self.global_regularizer_loss * global_regularizer_weight
             
             self.local_reconstruction_loss = tf.reduce_mean((self.local_vae.layer_output - self.layer_output) ** 2)
             self.local_regenerate_loss = tf.reduce_mean((self.global_encoder_random.layer_output - self.random_global_latent) ** 2)
@@ -126,10 +135,9 @@ class TrajectoryEstimator():
 
         return l1, l0
     
-    def optimize_global(self, input_state, input_waypoints, input_othervcs, input_traj, input_target):
+    def optimize_global(self, input_state, input_waypoints, input_othervcs, input_traj):
         input_list = {self.layer_input_state : input_state, self.layer_input_waypoints: input_waypoints, 
-                      self.layer_input_othervcs : input_othervcs, self.layer_input_traj : input_traj,
-                      self.layer_input_global_target : input_target}
+                      self.layer_input_othervcs : input_othervcs, self.layer_input_traj : input_traj}
         sess = tf.get_default_session()
         _, l0, l1, l2, l3, l4 = sess.run([self.global_train_action, self.global_loss, self.global_similar_loss, self.global_different_loss,
                                     self.global_regularizer_loss, self.global_mu_var ],input_list)
