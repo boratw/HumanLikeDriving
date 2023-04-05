@@ -125,7 +125,7 @@ with sess.as_default():
 
                 agent2 = random.randrange(len(cur_history))
                 while agent1 == agent2 or len(cur_history[agent2]) < 32:
-                    agent2 = random.randrange(agent_count)
+                    agent2 = random.randrange(len(cur_history))
 
                 agent3 = random.randrange(len(cur_history))
                 while agent1 == agent3 or agent2 == agent3 or len(cur_history[agent3]) < 32:

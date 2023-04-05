@@ -165,7 +165,7 @@ sess = tf.Session()
 with sess.as_default():
     learner = TrajectoryEstimator(traj_len=traj_len)
     learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
-    learner_saver.restore(sess, "train_log/TrajectoryEstimator2/log_31-03-2023-13-33-14_700.ckpt")
+    learner_saver.restore(sess, "train_log/TrajectoryEstimator2/log_04-04-2023-14-47-55_250.ckpt")
 
     with open("data/gathered_from_param2_npc/data2_" + str(pkl_index) + ".pkl","rb") as fr:
         data = pickle.load(fr)

@@ -110,18 +110,18 @@ try:
     # Spawn vehicles
     # --------------
 
-    for exp in range(100):
+    for exp in range(200):
         save_objs = []
-        for iteration in range(50):
+        impatience = [random.random() for _ in range(50) ]
+        criminality = [random.random() for _ in range(50) ]
+        adventurousness = [random.random() for _ in range(50) ]
+        lane_shift = [random.random() * 2 - 1.0 for _ in range(50) ]
+        for iteration in range(20):
             print("exp " + str(exp) + " : " + str(iteration))
             random.shuffle(spawn_points)
             vehicles_list = []
             batch = []
 
-            impatience = [random.random() for _ in range(50) ]
-            criminality = [random.random() for _ in range(50) ]
-            adventurousness = [random.random() for _ in range(50) ]
-            lane_shift = [random.random() * 2 - 1.0 for _ in range(50) ]
             distance_to_leading_vehicle = [ (1.5 - adventurousness[i]) * 5. for i in range(50) ]
             vehicle_lane_offset = [ lane_shift[i] * 0.75 for i in range(50) ]
             vehicle_speed = [ (0.5 - adventurousness[i]) * 100. for i in range(50) ]
@@ -152,8 +152,7 @@ try:
             all_vehicle_actors = world.get_actors(vehicles_list)
 
             for i, actor in enumerate(all_vehicle_actors):
-                traffic_manager.ignore_lights_percentage(actor, criminality[i] * 10. + impatience[i] * 10.)
-                traffic_manager.ignore_vehicles_percentage(actor, criminality[i] * 10.)
+                traffic_manager.ignore_lights_percentage(actor, impatience[i] * 20.)
                 traffic_manager.random_left_lanechange_percentage(actor, impatience[i] * 2.)
                 traffic_manager.random_right_lanechange_percentage(actor, impatience[i] * 2.)
 
@@ -161,13 +160,13 @@ try:
 
             
             world.tick()
-            for step in range(4000):
+            for step in range(2000):
                 state_vector = []
                 for i, actor in enumerate(all_vehicle_actors):
 
-                    distance_to_leading_vehicle[i] = distance_to_leading_vehicle[i] * 0.99 + (1.5 - adventurousness[i]) * 5. * 0.01 + random.uniform(-0.025, 0.025)
-                    vehicle_lane_offset[i] = vehicle_lane_offset[i] * 0.99 + lane_shift[i] * 0.75 * 0.01 + random.uniform(-0.0125, 0.0125)
-                    vehicle_speed[i] = vehicle_speed[i] * 0.99 + (0.75 - adventurousness[i]) * 100. * 0.01 + random.uniform(-1.25, 1.25)
+                    distance_to_leading_vehicle[i] = distance_to_leading_vehicle[i] * 0.99 + (1.5 - criminality[i]) * 5. * 0.01 + random.uniform(-0.025, 0.025)
+                    vehicle_lane_offset[i] = vehicle_lane_offset[i] * 0.99 + lane_shift[i] * 0.75 * 0.01 + random.uniform(-0.0025, 0.0125)
+                    vehicle_speed[i] = vehicle_speed[i] * 0.99 + (0.75 - adventurousness[i]) * 100. * 0.01 + random.uniform(-0.25, 0.25)
 
                     traffic_manager.distance_to_leading_vehicle(actor, distance_to_leading_vehicle[i] )
                     traffic_manager.vehicle_lane_offset(actor, vehicle_lane_offset[i])
@@ -175,7 +174,15 @@ try:
 
                     tr = actor.get_transform()
                     v = actor.get_velocity()
-                    tlight = actor.get_traffic_light_state()
+                    try:
+                        tlight = actor.get_traffic_light()
+                        tlight_state = tlight.get_state()
+                        tlight_wps = tlight.get_stop_waypoints()
+                        tlight_pos = [[w.transform.location.x, w.transform.location.y] for w in tlight_wps ]
+                    except:
+                        tlight_state = carla.TrafficLightState.Unknown
+                        tlight_pos = []
+
                     fail = actor.get_failure_state()
                     try:
                         traj = traffic_manager.get_all_actions(actor)
@@ -183,7 +190,7 @@ try:
                     except:
                         traj_pos = []
 
-                    state = [tr.location.x, tr.location.y, tr.rotation.yaw, v.x, v.y, tlight, fail, traj_pos]
+                    state = [tr.location.x, tr.location.y, tr.rotation.yaw, v.x, v.y, tlight_state, tlight_pos, fail, traj_pos]
                     state_vector.append(state)
                     
 
@@ -196,7 +203,7 @@ try:
             save_obj["params"] = [ [impatience[i], criminality[i], adventurousness[i], lane_shift[i]] for i in range(50) ]
             save_obj["state_vectors"] = state_vectors
             save_objs.append(save_obj)
-        with open("data/gathered_from_param2_npc/data2_" + str(exp) + ".pkl","wb") as fw:
+        with open("data/gathered_from_param3_npc/data_" + str(exp) + ".pkl","wb") as fw:
             pickle.dump(save_objs, fw)
 
 
