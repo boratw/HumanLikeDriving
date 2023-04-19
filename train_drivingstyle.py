@@ -13,7 +13,7 @@ except IndexError:
 
 import tensorflow.compat.v1 as tf
 from laneinfo import LaneInfo, RouteTracer
-from network.TrajectoryEstimator3 import TrajectoryEstimator
+from network.DrivingStyle import DrivingStyleLearner
 from datetime import datetime
 import numpy as np
 import pickle
@@ -25,10 +25,14 @@ import multiprocessing
 laneinfo = LaneInfo()
 laneinfo.Load_from_File("laneinfo_World10Opt.pkl")
 
+state_len = 59
+traj_len = 100
+global_input_len = 10
+global_latent_len = 4
 
 
 log_name = datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
-log_file = open("train_log/TrajectoryEstimator2/log_" + log_name + ".txt", "wt")
+log_file = open("train_log/DrivingStyle/log_" + log_name + ".txt", "wt")
 
 def rotate(posx, posy, yawsin, yawcos):
     return posx * yawcos - posy * yawsin, posx * yawsin + posy * yawcos
@@ -42,12 +46,12 @@ ReadOption = { "LaneFollow" : [1., 0., 0.],
               }
 
 def parallel_task(item):
-    history_exp = [[] for _ in range(50)]
+    history_exp = [[] for _ in range(100)]
 
     state_vectors = item["state_vectors"]
     agent_count = len(item["state_vectors"][0])
 
-    stepstart = random.randrange(10)
+    stepstart = random.randrange(50, 60)
     for step, state_vector in enumerate(state_vectors[stepstart:-60:10]):
         for i in range(agent_count):
             other_vcs = []
@@ -69,12 +73,12 @@ def parallel_task(item):
                     other_vcs.append([relposx, relposy, relyaw, vx, vy, np.sqrt(relposx * relposx + relposy * relposy)])
             other_vcs = np.array(sorted(other_vcs, key=lambda s: s[5]))
             velocity = np.sqrt(state_vector[i][3] ** 2 + state_vector[i][4] ** 2)
-            route = []
-            for j in range(10, 60, 10):
-                relposx = state_vectors[step+j][i][0] - x
-                relposy = state_vectors[step+j][i][1] - y
-                px, py = rotate(relposx, relposy, yawsin, yawcos)
-                route.append([px, py])
+
+            relposx = state_vectors[step+20][i][0] - x
+            relposy = state_vectors[step+20][i][1] - y
+            px, py = rotate(relposx, relposy, yawsin, yawcos)
+            route = [px, py]
+            
             waypoints = []
             option = [0., 0., 0.]
             px, py = 0., 0.
@@ -96,7 +100,7 @@ def parallel_task(item):
                             prevy = state_vectors[k][i][8][0][2]
                             break
                     k += 1
-                waypoints.append([option[0], option[1], option[2], px, py])
+                waypoints.extend([option[0], option[1], option[2], px, py])
                 
             px, py = 9999., 9999.
             for t in state_vector[i][6]:
@@ -105,14 +109,14 @@ def parallel_task(item):
             if px == 9999.:
                 px = 0.
                 py = 0.
-            history_exp[i].append( [[velocity, state_vector[i][5], px, py], waypoints, other_vcs[:8, :5], route])
+            history_exp[i].append( [np.concatenate([[velocity, state_vector[i][5], px, py], waypoints, other_vcs[:8,:5].flatten()]), route])
     return history_exp
 
 tf.disable_eager_execution()
 sess = tf.Session()
 with sess.as_default():
-    with multiprocessing.Pool(processes=20) as pool:
-        learner = TrajectoryEstimator()
+    with multiprocessing.Pool(processes=50) as pool:
+        learner = DrivingStyleLearner(state_len=state_len, traj_len=traj_len, global_input_len=global_input_len, global_latent_len=global_latent_len)
         learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
         sess.run(tf.global_variables_initializer())
         learner.network_initialize()
@@ -121,75 +125,38 @@ with sess.as_default():
         history = []
 
         for epoch in range(1, 10000):
-            pkl_index = random.randrange(22)
-            with open("data/gathered_from_param3_npc/data_" + str(pkl_index) + ".pkl","rb") as fr:
+            pkl_index = random.randrange(7)
+            with open("data/gathered_from_npc_batjeon/data_" + str(pkl_index) + ".pkl","rb") as fr:
                 data = pickle.load(fr)
             print("Epoch " + str(epoch) + " Start with data " + str(pkl_index))
 
             history_data = []
             for result in pool.imap(parallel_task, data):
-                print("Load Data")
                 history_data.append(result)
             history.append(history_data)
 
             print("Current History Length : " + str(len(history)))
-            for iter in range(len(history)):
-                print("Train Step #" + str(iter))
+            for iter in range(len(history) * 256):
 
-                min_step = [999999] * 4
                 data_index = random.randrange(len(history))
-                local_latents = []
-                print("Local latent optimizing")
-                for local_step in range(4):
-                    exp_index = random.randrange(len(history[data_index]))
-                    cur_history = history[data_index][exp_index]
-                    agent_num = len(cur_history)
+                exp_index = random.randrange(len(history[data_index]))
+                print("Train Step #" + str(iter) + "Read data " + str(data_index) + " exp " + str(exp_index))
 
-                    global_loss_sum = 0
-                    local_loss_sum = 0
-
-                    print("Read data " + str(data_index) + " exp " + str(exp_index))
-
-                    step_dic = [ list(range(len(cur_history[x]))) for x in range(agent_num) ]
-                    min_step[local_step] = 999999
-                    for s in step_dic:
-                        random.shuffle(s)
-                        if len(s) < min_step[local_step]:
-                            min_step[local_step] = len(s)
-                    
-                    local_latent = np.zeros([agent_num, min_step[local_step], 4])
-
-                    for step in range(min_step[local_step]):
-                        state_dic = []
-                        waypoint_dic = []
-                        othervcs_dic = []
-                        route_dic = []
-                        for x in range(agent_num):
-                            state_dic.append(cur_history[x][step_dic[x][step]][0])
-                            waypoint_dic.append(cur_history[x][step_dic[x][step]][1])
-                            othervcs_dic.append(cur_history[x][step_dic[x][step]][2])
-                            route_dic.append(cur_history[x][step_dic[x][step]][3] )
-
-                        res, local_loss = learner.optimize_local(state_dic, waypoint_dic, othervcs_dic, route_dic)
-                        local_loss_sum += local_loss
-                        for x in range(agent_num):
-                            local_latent[x][step_dic[x][step]] = res[x]
-                    local_latents.append(local_latent)
-
-                print("Global latent optimizing")
-                for global_step in range(agent_num * 4):
-                    agent_dic = random.choices(list(range(agent_num)), k=4)
-                    latent_dic = []
-                    for x in agent_dic:
-                        for step in range(4):
-                            start_step = random.randrange(min_step[step] - 100)
-                            latent_dic.append(local_latents[step][x][start_step:(start_step + 100)])
-
-
-                    global_loss = learner.optimize_global(latent_dic)
-                    global_loss_sum += global_loss
+                cur_history = history[data_index][exp_index]
+                agent_num = len(cur_history)
                 
-            if len(history) > 32:
+                agent_dic = random.choices(list(range(agent_num)), k=16)
+                step_dic = [ random.randrange(len(cur_history[x]) - traj_len) for x in agent_dic ]
+
+                state_dic = []
+                nextstate_dic = []
+                for x in range(16):
+                    state_dic.append([cur_history[agent_dic[x]][step][0] for step in range(step_dic[x], step_dic[x] + traj_len)])
+                    nextstate_dic.append([cur_history[agent_dic[x]][step][1] for step in range(step_dic[x], step_dic[x] + traj_len)])
+                learner.optimize(state_dic, nextstate_dic)
+        
+                
+            if len(history) > 8:
                 history = history[1:]
 
             learner.log_print()
@@ -199,5 +166,5 @@ with sess.as_default():
 
 
             if epoch % 50 == 0:
-                learner_saver.save(sess, "train_log/TrajectoryEstimator3/log_" + log_name + "_" + str(epoch) + ".ckpt")
+                learner_saver.save(sess, "train_log/DrivingStyle/log_" + log_name + "_" + str(epoch) + ".ckpt")
 

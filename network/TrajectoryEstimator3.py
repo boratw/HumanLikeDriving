@@ -1,15 +1,15 @@
 import tensorflow.compat.v1 as tf
 import numpy as np
 from network.mlp import MLP
-from network.vae import VAE, VAE_Reverse
+from network.vae import VAE, VAE_DecoderOnly
 from network.vencoder import VEncoder
 from network.onedcnn import OneDCnn
 
 
 
 class TrajectoryEstimator():
-    def __init__(self, name=None, reuse=False, global_learner_lr=0.0001, local_learner_lr = 0.00005, global_latent_len = 4, local_latent_len = 4, global_input_latent_length=100, traj_len = 5, 
-            reconstruction_loss_magnifier=1., global_different_loss_magnifier = 1.0, global_regularizer_weight=0.001, local_regularizer_weight = 0.01):
+    def __init__(self, name=None, reuse=False, global_learner_lr=0.0001, local_learner_lr = 0.00005, predictor_learner_lr = 0.0001, global_latent_len = 4, local_latent_len = 4, predictor_latent_len = 1, 
+                 global_input_latent_length=100, traj_len = 5, global_different_loss_magnifier = 1.0, global_regularizer_weight=0.001, local_regularizer_weight = 0.01):
 
         if name == None:
             self.name = "TrajectoryEstimator"
@@ -17,6 +17,7 @@ class TrajectoryEstimator():
             self.name = "TrajectoryEstimator" + name
         self.global_latent_len = global_latent_len
         self.local_latent_len = local_latent_len
+        self.predictor_latent_len = predictor_latent_len
         
         with tf.variable_scope(self.name, reuse=reuse):
 
@@ -25,6 +26,7 @@ class TrajectoryEstimator():
             self.layer_input_othervcs = tf.placeholder(tf.float32, [None, 8, 5])
             self.layer_input_traj = tf.placeholder(tf.float32, [None, traj_len, 2])
             self.layer_input_global = tf.placeholder(tf.float32, [None, global_input_latent_length, local_latent_len])
+            self.layer_input_global_latent = tf.placeholder(tf.float32, [None, global_latent_len])
 
             layer_input_waypoints_reshaped = tf.reshape(self.layer_input_waypoints, [-1, 15])
             layer_input_othervcs_reshaped = tf.reshape(self.layer_input_othervcs, [-1, 40])
@@ -39,8 +41,13 @@ class TrajectoryEstimator():
             self.global_encoder = OneDCnn(local_latent_len, global_latent_len, [32, 64, 96, 128], [128, 64, 32], hidden_nonlns = tf.nn.leaky_relu, 
                         input_tensor=layer_input_global_reshaped, name="GlobalEncoder" )
 
-            self.local_reconstruction_loss = tf.reduce_mean((self.local_vae.layer_output - self.layer_traj) ** 2)
-            self.local_loss = self.local_reconstruction_loss + self.local_vae.regularization_loss * local_regularizer_weight
+            self.predictor_input = tf.concat([self.layer_input, layer_input_waypoints_reshaped, layer_input_othervcs_reshaped, self.layer_input_global_latent], axis=1)
+            self.predictor_vae = VAE(self.layer_traj.shape[1], predictor_latent_len, [128, 64, 128], hidden_nonlns = tf.nn.leaky_relu, input_tensor=self.layer_traj,
+                           additional_dim=self.predictor_input.shape[1], additional_tensor=self.predictor_input, name="PredictorVAE" )
+            self.predictor_vae_decoderonly = VAE_DecoderOnly(self.layer_traj.shape[1], predictor_latent_len, [128, 64, 128], hidden_nonlns = tf.nn.leaky_relu,
+                           additional_dim=self.predictor_input.shape[1], additional_tensor=self.predictor_input, name="PredictorVAE", reuse=True )
+
+
 
             self.global_encoded_latent_size = tf.math.sqrt(tf.reduce_sum(self.global_encoder.layer_output ** 2, axis=1, keep_dims=True))
             self.global_encoded_latent = self.global_encoder.layer_output / tf.stop_gradient(self.global_encoded_latent_size + 1e-7)
@@ -62,13 +69,24 @@ class TrajectoryEstimator():
 
             self.global_mu_var = tf.math.reduce_variance(self.global_encoded_latent, axis=0)
 
+            self.local_reconstruction_loss = tf.reduce_mean((self.local_vae.layer_output - self.layer_traj) ** 2)
+            self.local_loss = self.local_reconstruction_loss + self.local_vae.regularization_loss * local_regularizer_weight
+
             self.local_mu_var = tf.math.reduce_variance(self.local_vae.mu, axis=0)
             self.local_logsig = tf.reduce_mean(self.local_vae.logsig, axis=0)
 
+            self.predictor_reconstruction_loss = tf.reduce_mean((self.predictor_vae.layer_output - self.layer_traj) ** 2)
+            self.predictor_loss = self.predictor_reconstruction_loss + self.predictor_vae.regularization_loss * local_regularizer_weight
+            
+            self.predictor_mu_var = tf.math.reduce_variance(self.predictor_vae.mu, axis=0)
+            self.predictor_logsig = tf.reduce_mean(self.predictor_vae.logsig, axis=0)
+
             self.global_optimizer = tf.train.AdamOptimizer(global_learner_lr)
             self.local_optimizer = tf.train.AdamOptimizer(local_learner_lr)
+            self.predictor_optimizer = tf.train.AdamOptimizer(predictor_learner_lr)
             self.global_train_action = self.global_optimizer.minimize(loss = tf.reduce_sum(self.global_loss), var_list=self.global_encoder.trainable_params)
             self.local_train_action = self.local_optimizer.minimize(loss = tf.reduce_sum(self.local_loss), var_list=self.local_vae.trainable_params)
+            self.predictor_train_action = self.predictor_optimizer.minimize(loss = tf.reduce_sum(self.predictor_loss), var_list=self.predictor_vae.trainable_params)
 
 
             self.trainable_params = tf.trainable_variables(scope=tf.get_variable_scope().name)
@@ -88,20 +106,30 @@ class TrajectoryEstimator():
         self.log_local_loss_regul = 0.
         self.log_local_muvar = np.array([0.] * self.local_latent_len)
         self.log_local_logsig = np.array([0.] * self.local_latent_len)
+        self.log_pred_loss_rec = 0.
+        self.log_pred_loss_regul = 0.
+        self.log_pred_muvar = np.array([0.] * self.predictor_latent_len)
+        self.log_pred_logsig = np.array([0.] * self.predictor_latent_len)
         self.log_local_num = 0
         self.log_global_num = 0
+        self.log_pred_num = 0
 
     def network_update(self):
         self.log_global_loss_sim = 0.
         self.log_global_loss_diff = 0.
         self.log_global_loss_regul = 0.
         self.log_global_muvar = np.array([0.] * self.global_latent_len)
-        self.log_global_num = 0
         self.log_local_loss_rec = 0.
         self.log_local_loss_regul = 0.
         self.log_local_muvar = np.array([0.] * self.local_latent_len)
         self.log_local_logsig = np.array([0.] * self.local_latent_len)
+        self.log_pred_loss_rec = 0.
+        self.log_pred_loss_regul = 0.
+        self.log_pred_muvar = np.array([0.] * self.predictor_latent_len)
+        self.log_pred_logsig = np.array([0.] * self.predictor_latent_len)
         self.log_local_num = 0
+        self.log_global_num = 0
+        self.log_pred_num = 0
             
     def optimize_local(self, input_state, input_waypoints, input_othervcs, input_traj):
         input_list = {self.layer_input_state : input_state, self.layer_input_waypoints: input_waypoints, 
@@ -117,7 +145,8 @@ class TrajectoryEstimator():
         self.log_local_logsig += l5
         self.log_local_num += 1
 
-        return l1, l0
+        return l0
+       
     
     def optimize_global(self, input_global):
         input_list = {self.layer_input_global : input_global}
@@ -132,52 +161,85 @@ class TrajectoryEstimator():
         self.log_global_num += 1
         return l0
     
-    '''
-    def get_global_latents(self, input_state, input_waypoints, input_othervcs, input_traj):
+
+    def optimize_predictor(self, input_state, input_waypoints, input_othervcs, input_traj, input_global_latent):
+        input_list = {self.layer_input_state : input_state, self.layer_input_waypoints: input_waypoints, 
+                      self.layer_input_othervcs : input_othervcs, self.layer_input_traj : input_traj, self.layer_input_global_latent : input_global_latent}
+        sess = tf.get_default_session()
+
+        _, l0, l1, l2, l3, l4 = sess.run([self.predictor_train_action, self.predictor_loss,
+                                    self.predictor_reconstruction_loss, self.predictor_vae.regularization_loss,
+                                    self.predictor_mu_var, self.predictor_logsig ],input_list)
+        
+        self.log_pred_loss_rec += l1
+        self.log_pred_loss_regul += l2
+        self.log_pred_muvar += l3
+        self.log_pred_logsig += l4
+        self.log_pred_num += 1
+
+        return l1, l0
+    
+    def get_global_latents(self, input_global):
+        input_list = {self.layer_input_global : input_global}
+        sess = tf.get_default_session()
+        l0 = sess.run(self.global_encoded_latent, input_list)
+        return l0
+    
+    def get_local_latents(self, input_state, input_waypoints, input_othervcs, input_traj):
         input_list = {self.layer_input_state : input_state, self.layer_input_waypoints: input_waypoints, 
                       self.layer_input_othervcs : input_othervcs, self.layer_input_traj : input_traj}
         sess = tf.get_default_session()
-        l0 = sess.run([self.global_encoded_latent], input_list)
-        return l0[0]
-    
-    def get_local_latents(self, input_state, input_waypoints, input_othervcs, input_traj, input_global_latent):
-        input_list = {self.layer_input_state : input_state, self.layer_input_waypoints: input_waypoints, 
-                      self.layer_input_othervcs : input_othervcs, self.layer_input_traj : input_traj, }
-        sess = tf.get_default_session()
-        mu, var = sess.run([self.local_vae_global_target.mu, self.local_vae_global_target.sig], input_list)
-        return mu, var
+        mu = sess.run(self.local_vae.mu, input_list)
+        return mu
 
-    def get_routes(self, input_state, input_waypoints, input_othervcs, input_global_latent, input_local_latent):
+    
+    def get_routes(self, input_state, input_waypoints, input_othervcs, input_global_latent):
         input_list = {self.layer_input_state : input_state, self.layer_input_waypoints: input_waypoints, 
-                      self.layer_input_othervcs : input_othervcs, self.layer_input_global_latent : input_global_latent,
-                    self.local_vae_global_target.layer_latent : input_local_latent }
+                      self.layer_input_othervcs : input_othervcs, self.layer_input_global_latent : input_global_latent}
         sess = tf.get_default_session()
-        res = sess.run(self.route_output, input_list)
+        res = sess.run(self.predictor_vae_decoderonly.layer_output, input_list)
         return res
-    '''
+    
     
     def log_caption(self):
         return "\t" + self.name + "_GlobalSimLoss\t"  + self.name + "_GlobalDiffLoss\t" + self.name + "_GlobalRegulLoss\t" \
             + self.name + "_GlobalLogsig\t" + "\t".join([ "" for _ in range(self.global_latent_len)]) \
             + self.name + "_LocalReconLoss\t"  + self.name + "_LocalRegulLoss\t" \
             + self.name + "_LocalMuVar\t" + "\t".join([ "" for _ in range(self.local_latent_len)]) \
-            + self.name + "_LocalLogsig\t" + "\t".join([ "" for _ in range(self.local_latent_len)]) 
+            + self.name + "_LocalLogsig\t" + "\t".join([ "" for _ in range(self.local_latent_len)]) \
+            + self.name + "_PredReconLoss\t"  + self.name + "_PredRegulLoss\t" \
+            + self.name + "_PredMuVar\t" + "\t".join([ "" for _ in range(self.predictor_latent_len)]) \
+            + self.name + "_PredLogsig\t" + "\t".join([ "" for _ in range(self.predictor_latent_len)]) 
 
     def current_log(self):
-        return "\t" + str(self.log_global_loss_sim / self.log_global_num) + "\t" + str(self.log_global_loss_diff / self.log_global_num) + "\t" \
-            + str(self.log_global_loss_regul / self.log_global_num)  \
-            + "\t".join([str(self.log_global_muvar[i] / self.log_global_num) for i in range(self.global_latent_len)]) + "\t" \
-            + "\t" + str(self.log_local_loss_rec / self.log_local_num) + "\t" + str(self.log_local_loss_regul / self.log_local_num) + "\t" \
-            + "\t".join([str(self.log_local_muvar[i] / self.log_local_num) for i in range(self.local_latent_len)]) + "\t" \
-            + "\t".join([str(self.log_local_logsig[i] / self.log_local_num) for i in range(self.local_latent_len)])
+        log_local_num = (self.log_local_num if self.log_local_num > 0 else 1)
+        log_global_num = (self.log_global_num if self.log_global_num > 0 else 1)
+        log_pred_num = (self.log_pred_num if self.log_pred_num > 0 else 1)
+        return "\t" + str(self.log_global_loss_sim / log_global_num) + "\t" + str(self.log_global_loss_diff / log_global_num) + "\t" \
+            + str(self.log_global_loss_regul / log_global_num)  \
+            + "\t".join([str(self.log_global_muvar[i] / log_global_num) for i in range(self.global_latent_len)]) + "\t" \
+            + "\t" + str(self.log_local_loss_rec / log_local_num) + "\t" + str(self.log_local_loss_regul / log_local_num) + "\t" \
+            + "\t".join([str(self.log_local_muvar[i] / log_local_num) for i in range(self.local_latent_len)]) + "\t" \
+            + "\t".join([str(self.log_local_logsig[i] / log_local_num) for i in range(self.local_latent_len)])\
+            + "\t" + str(self.log_pred_loss_rec / log_pred_num) + "\t" + str(self.log_pred_loss_regul / log_pred_num) + "\t" \
+            + "\t".join([str(self.log_pred_muvar[i] / log_local_num) for i in range(self.predictor_latent_len)]) + "\t" \
+            + "\t".join([str(self.log_pred_logsig[i] / log_local_num) for i in range(self.predictor_latent_len)])
 
     def log_print(self):
+
+        log_local_num = (self.log_local_num if self.log_local_num > 0 else 1)
+        log_global_num = (self.log_global_num if self.log_global_num > 0 else 1)
+        log_pred_num = (self.log_pred_num if self.log_pred_num > 0 else 1)
         print ( self.name \
-            + "\n\tGlobalSimLoss          : " + str(self.log_global_loss_sim / self.log_global_num) \
-            + "\n\tGlobalDiffLoss          : " + str(self.log_global_loss_diff / self.log_global_num) \
-            + "\n\tGlobalRegulLoss        : " + str(self.log_global_loss_regul / self.log_global_num) \
-            + "\n\tGlobalMuVar            : " + " ".join([str(self.log_global_muvar[i] / self.log_global_num)[:8] for i in range(self.global_latent_len)]) \
-            + "\n\tLocalReconLoss         : " + str(self.log_local_loss_rec / self.log_local_num) \
-            + "\n\tLocalRegulLoss         : " + str(self.log_local_loss_regul / self.log_local_num) \
-            + "\n\tLocalMuVar             : " + " ".join([str(self.log_local_muvar[i] / self.log_local_num)[:8] for i in range(self.local_latent_len)]) \
-            + "\n\tLocalLogsig            : " + " ".join([str(self.log_local_logsig[i] / self.log_local_num)[:8] for i in range(self.local_latent_len)]))
+            + "\n\tGlobalSimLoss          : " + str(self.log_global_loss_sim / log_global_num) \
+            + "\n\tGlobalDiffLoss         : " + str(self.log_global_loss_diff / log_global_num) \
+            + "\n\tGlobalRegulLoss        : " + str(self.log_global_loss_regul / log_global_num) \
+            + "\n\tGlobalMuVar            : " + " ".join([str(self.log_global_muvar[i] / log_global_num)[:8] for i in range(self.global_latent_len)]) \
+            + "\n\tLocalReconLoss         : " + str(self.log_local_loss_rec / log_local_num) \
+            + "\n\tLocalRegulLoss         : " + str(self.log_local_loss_regul / log_local_num) \
+            + "\n\tLocalMuVar             : " + " ".join([str(self.log_local_muvar[i] / log_local_num)[:8] for i in range(self.local_latent_len)]) \
+            + "\n\tLocalLogsig            : " + " ".join([str(self.log_local_logsig[i] / log_local_num)[:8] for i in range(self.local_latent_len)]) \
+            + "\n\tPredReconLoss          : " + str(self.log_pred_loss_rec / log_pred_num) \
+            + "\n\tPredRegulLoss          : " + str(self.log_pred_loss_regul / log_pred_num) \
+            + "\n\tPredMuVar              : " + " ".join([str(self.log_pred_muvar[i] / log_pred_num)[:8] for i in range(self.predictor_latent_len)]) \
+            + "\n\tPredLogsig             : " + " ".join([str(self.log_pred_logsig[i] / log_pred_num)[:8] for i in range(self.predictor_latent_len)]))

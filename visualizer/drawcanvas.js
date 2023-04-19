@@ -24,7 +24,7 @@ var predicteds = [[]];
 var latent_data = {};
 var latentoutput = undefined;
 
-let draw_potential = true;
+let draw_potential = false;
 
 function InitCanvas()
 {
@@ -47,14 +47,32 @@ function InitCanvas()
 function DrawCanvas()
 {
     linectx.resetTransform()
-    linectx.clearRect(0, 0, 640, 640);
+    linectx.fillStyle = "rgb(0, 0, 0)";
+    linectx.fillRect(0, 0, 640, 640);
 
     linectx.setTransform(viewport_scale, 0, 0, viewport_scale, viewport_x, viewport_y);
+    linectx.drawImage(laneimage, 0, 0)
+
     linectx.transform(carla_scale, 0, 0, carla_scale, carla_x, carla_y)
     linectx.rotate(carla_rotate)
     linectx.lineCap = "round";
     linectx.lineJoin = "round";
 
+    
+    if(draw_potential)
+    {
+        linectx.filter = "blur(10px)";
+        linectx.strokeStyle = "rgba(255, 0, 0, 0.2)";
+        linectx.lineWidth = 3;
+    }
+    else
+    {
+        linectx.strokeStyle = "rgba(255, 0, 0, 0.2)";
+        linectx.filter = "none";
+        linectx.lineWidth = 1;
+
+    }
+    /*
     if(latentoutput != undefined)
     {
         linectx.strokeStyle = "rgba(255, 0, 0, 1)";
@@ -71,20 +89,6 @@ function DrawCanvas()
 
         }
         linectx.stroke();
-    }
-    /*
-    if(draw_potential)
-    {
-        linectx.filter = "blur(10px)";
-        linectx.strokeStyle = "rgba(255, 0, 0, 0.05)";
-        linectx.lineWidth = 3;
-    }
-    else
-    {
-        linectx.strokeStyle = "rgba(255, 0, 0, 0.25)";
-        linectx.filter = "none";
-        linectx.lineWidth = 0.25;
-
     }
     else
     {
@@ -122,6 +126,7 @@ function DrawCanvas()
 
         }
     }
+    */
     if(clicked == -1)
     {
         for(var k = 0; k < predicteds.length; ++k)
@@ -143,14 +148,50 @@ function DrawCanvas()
             }
         }
     }
-    */
+    else
+    {
+        if(latentoutput == undefined)
+        {
+            for(v of predicteds[clicked])
+            {
+                linectx.beginPath();
+                if(v.length > 1)
+                {
+                    linectx.moveTo(v[0][0], v[0][1]);
+                    for(var i = 1; i < v.length; ++i)
+                    {
+                        linectx.lineTo(v[i][0], v[i][1]);
+                    }
+        
+                }
+                linectx.stroke();
+            }
+        }
+        else
+        {
+            for(v of latentoutput)
+            {
+                linectx.beginPath();
+                if(v.length > 1)
+                {
+                    linectx.moveTo(v[0][0], v[0][1]);
+                    for(var i = 1; i < v.length; ++i)
+                    {
+                        linectx.lineTo(v[i][0], v[i][1]);
+                    }
+        
+                }
+                linectx.stroke();
+            }
+
+        }
+    }
+    
 
     drawctx.resetTransform()
-    drawctx.fillStyle = "rgb(0, 0, 0)";
-    drawctx.fillRect(0, 0, 640, 640);
+    drawctx.clearRect(0, 0, 640, 640);
 
     drawctx.setTransform(viewport_scale, 0, 0, viewport_scale, viewport_x, viewport_y);
-    drawctx.drawImage(laneimage, 0, 0)
 
     drawctx.transform(carla_scale, 0, 0, carla_scale, carla_x, carla_y)
     drawctx.rotate(carla_rotate)
@@ -187,8 +228,8 @@ function DrawCanvas()
 
     }
 
-    visctx.drawImage(drawctx.canvas, 0, 0);
     visctx.drawImage(linectx.canvas, 0, 0);
+    visctx.drawImage(drawctx.canvas, 0, 0);
 
     /*
     if(clicked != -1)
@@ -226,13 +267,16 @@ function DrawSliders()
 {
     if(clicked != -1 && latents != undefined)
     {
-        for(var i = 0; i < 8; ++i)
+        for(var i = 0; i < latent_length; ++i)
         {
             box = document.getElementById("box_l" + i)
             slider = document.getElementById("slider_l" + i)
-            mu = Math.round(latents[clicked][i][0] * 100)
-            l = mu * 0.45 + 180 - latents[clicked][i][1] * 45
-            r = mu * 0.45 + 180 + latents[clicked][i][1] * 45
+            //mu = Math.round(latents[clicked][i][0] * 100)
+            //l = mu * 0.45 + 180 - latents[clicked][i][1] * 45
+            //r = mu * 0.45 + 180 + latents[clicked][i][1] * 45
+            mu = Math.round(latents[clicked][i] * 100)
+            l = mu * 1.8 + 180 - 0.1 * 45
+            r = mu * 1.8 + 180 + 0.1 * 45
             if(l < 0)
                 l = 0
             else if (l > 360)

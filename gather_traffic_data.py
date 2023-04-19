@@ -110,25 +110,25 @@ try:
     # Spawn vehicles
     # --------------
 
-    for exp in range(200):
+    for exp in range(1000):
         save_objs = []
-        impatience = [random.random() for _ in range(50) ]
-        criminality = [random.random() for _ in range(50) ]
-        adventurousness = [random.random() for _ in range(50) ]
-        lane_shift = [random.random() * 2 - 1.0 for _ in range(50) ]
-        for iteration in range(20):
+        impatience = [random.random() for _ in range(100) ]
+        criminality = [random.random() for _ in range(100) ]
+        adventurousness = [random.random() for _ in range(100) ]
+        lane_shift = [random.random() * 2 - 1.0 for _ in range(100) ]
+        for iteration in range(100):
             print("exp " + str(exp) + " : " + str(iteration))
             random.shuffle(spawn_points)
             vehicles_list = []
             batch = []
 
-            distance_to_leading_vehicle = [ (1.5 - adventurousness[i]) * 5. for i in range(50) ]
-            vehicle_lane_offset = [ lane_shift[i] * 0.75 for i in range(50) ]
-            vehicle_speed = [ (0.5 - adventurousness[i]) * 100. for i in range(50) ]
+            distance_to_leading_vehicle = [ (1.5 - adventurousness[i]) * 5. for i in range(100) ]
+            vehicle_lane_offset = [ lane_shift[i] * 0.75 for i in range(100) ]
+            vehicle_speed = [ (0.5 - adventurousness[i]) * 100. for i in range(100) ]
             state_vectors = []
 
             for n, transform in enumerate(spawn_points):
-                if n >= 50:
+                if n >= 100:
                     break
                 blueprint = random.choice(blueprints)
                 if blueprint.has_attribute('color'):
@@ -200,10 +200,10 @@ try:
 
 
             save_obj = {}
-            save_obj["params"] = [ [impatience[i], criminality[i], adventurousness[i], lane_shift[i]] for i in range(50) ]
+            save_obj["params"] = [ [impatience[i], criminality[i], adventurousness[i], lane_shift[i]] for i in range(100) ]
             save_obj["state_vectors"] = state_vectors
             save_objs.append(save_obj)
-        with open("data/gathered_from_param3_npc/data_" + str(exp) + ".pkl","wb") as fw:
+        with open("data/gathered_from_npc_batjeon/data_" + str(exp) + ".pkl","wb") as fw:
             pickle.dump(save_objs, fw)
 
 

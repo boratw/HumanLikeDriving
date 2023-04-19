@@ -1,6 +1,7 @@
 let canvasmoving = false;
 let canvasmoved = false;
 let linechart = null;
+var latent_length=8;
 
 function GenerateDocument()
 {
@@ -11,13 +12,14 @@ function GenerateDocument()
             <span style="width:40px; display:inline-block">
             #${i < 4 ? 'G' + i : 'L' + i}
             </span><!--
-            --><input class="latentslider" id="slider_l${i}" type="range" min="-400" max="400" value="0">
+            --><input class="latentslider" id="slider_l${i}" type="range" min="-100" max="100" value="0">
             <span id="value_l${i}">0</span>
             <div class="latentbox">
                 <div class="latentinnerbox" id="box_l${i}"></div>
             </div>
         </div>`
     }
+    /*
     linechart = new Chart(document.getElementById('chart'),
         {
           type: 'line',
@@ -46,7 +48,7 @@ function GenerateDocument()
             
               }
           }
-        });
+        });*/
 }
 
 function AssignEventHandlers()

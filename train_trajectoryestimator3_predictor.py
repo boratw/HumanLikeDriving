@@ -28,7 +28,7 @@ laneinfo.Load_from_File("laneinfo_World10Opt.pkl")
 
 
 log_name = datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
-log_file = open("train_log/TrajectoryEstimator2/log_" + log_name + ".txt", "wt")
+log_file = open("train_log/TrajectoryEstimator3/log_pred_" + log_name + ".txt", "wt")
 
 def rotate(posx, posy, yawsin, yawcos):
     return posx * yawcos - posy * yawsin, posx * yawsin + posy * yawcos
@@ -114,7 +114,11 @@ with sess.as_default():
     with multiprocessing.Pool(processes=20) as pool:
         learner = TrajectoryEstimator()
         learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
+        old_var_list = {d : learner.trainable_dict[d] for d in learner.trainable_dict.keys() if d.startswith("VAE_LocalVAE") or d.startswith("OneDCnn_GlobalEncoder") }
+        old_learner_saver = tf.train.Saver(var_list=old_var_list, max_to_keep=0)
         sess.run(tf.global_variables_initializer())
+        old_learner_saver.restore(sess, "train_log/TrajectoryEstimator3/log_06-04-2023-02-41-55_250.ckpt")
+
         learner.network_initialize()
         log_file.write("Epoch" + learner.log_caption() + "\n")
 
@@ -136,58 +140,56 @@ with sess.as_default():
             for iter in range(len(history)):
                 print("Train Step #" + str(iter))
 
-                min_step = [999999] * 4
                 data_index = random.randrange(len(history))
-                local_latents = []
-                print("Local latent optimizing")
-                for local_step in range(4):
-                    exp_index = random.randrange(len(history[data_index]))
-                    cur_history = history[data_index][exp_index]
-                    agent_num = len(cur_history)
+                exp_index = random.randrange(len(history[data_index]))
+                cur_history = history[data_index][exp_index]
+                agent_num = len(cur_history)
+                local_latents = [[] for _ in range(agent_num)]
 
-                    global_loss_sum = 0
-                    local_loss_sum = 0
+                print("Read data " + str(data_index) + " exp " + str(exp_index))
 
-                    print("Read data " + str(data_index) + " exp " + str(exp_index))
+                step_dic = [ len(cur_history[x]) for x in range(agent_num) ]
+                min_step = np.min(step_dic)
+                start_step = random.randrange(min_step - 100)
+                
+                print("Getting Local latent from step " + str(start_step * 10))
 
-                    step_dic = [ list(range(len(cur_history[x]))) for x in range(agent_num) ]
-                    min_step[local_step] = 999999
-                    for s in step_dic:
-                        random.shuffle(s)
-                        if len(s) < min_step[local_step]:
-                            min_step[local_step] = len(s)
-                    
-                    local_latent = np.zeros([agent_num, min_step[local_step], 4])
+                for step in range(start_step, start_step + 100):
+                    state_dic = []
+                    waypoint_dic = []
+                    othervcs_dic = []
+                    route_dic = []
+                    for x in range(agent_num):
+                        state_dic.append(cur_history[x][step][0])
+                        waypoint_dic.append(cur_history[x][step][1])
+                        othervcs_dic.append(cur_history[x][step][2])
+                        route_dic.append(cur_history[x][step][3] )
 
-                    for step in range(min_step[local_step]):
-                        state_dic = []
-                        waypoint_dic = []
-                        othervcs_dic = []
-                        route_dic = []
-                        for x in range(agent_num):
-                            state_dic.append(cur_history[x][step_dic[x][step]][0])
-                            waypoint_dic.append(cur_history[x][step_dic[x][step]][1])
-                            othervcs_dic.append(cur_history[x][step_dic[x][step]][2])
-                            route_dic.append(cur_history[x][step_dic[x][step]][3] )
+                    res = learner.get_local_latents(state_dic, waypoint_dic, othervcs_dic, route_dic)
+                    for x in range(agent_num):
+                        local_latents[x].append(res[x])
 
-                        res, local_loss = learner.optimize_local(state_dic, waypoint_dic, othervcs_dic, route_dic)
-                        local_loss_sum += local_loss
-                        for x in range(agent_num):
-                            local_latent[x][step_dic[x][step]] = res[x]
-                    local_latents.append(local_latent)
-
-                print("Global latent optimizing")
-                for global_step in range(agent_num * 4):
-                    agent_dic = random.choices(list(range(agent_num)), k=4)
-                    latent_dic = []
-                    for x in agent_dic:
-                        for step in range(4):
-                            start_step = random.randrange(min_step[step] - 100)
-                            latent_dic.append(local_latents[step][x][start_step:(start_step + 100)])
+                print("Getting Global latent")
+                global_latent = learner.get_global_latents(local_latents)
 
 
-                    global_loss = learner.optimize_global(latent_dic)
-                    global_loss_sum += global_loss
+                print("Optimizing Predictor")
+                step_dic = [ list(range(start_step, start_step + 100)) for x in range(agent_num) ]
+                for s in step_dic:
+                    random.shuffle(s)
+                
+                for step in range(100):
+                    state_dic = []
+                    waypoint_dic = []
+                    othervcs_dic = []
+                    route_dic = []
+                    for x in range(agent_num):
+                        state_dic.append(cur_history[x][step_dic[x][step]][0])
+                        waypoint_dic.append(cur_history[x][step_dic[x][step]][1])
+                        othervcs_dic.append(cur_history[x][step_dic[x][step]][2])
+                        route_dic.append(cur_history[x][step_dic[x][step]][3] )
+
+                    learner.optimize_predictor(state_dic, waypoint_dic, othervcs_dic, route_dic, global_latent)
                 
             if len(history) > 32:
                 history = history[1:]
@@ -199,5 +201,5 @@ with sess.as_default():
 
 
             if epoch % 50 == 0:
-                learner_saver.save(sess, "train_log/TrajectoryEstimator3/log_" + log_name + "_" + str(epoch) + ".ckpt")
+                learner_saver.save(sess, "train_log/TrajectoryEstimator3/log_pred_" + log_name + "_" + str(epoch) + ".ckpt")
 

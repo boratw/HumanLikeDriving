@@ -22,6 +22,7 @@ function RequestCurrentMap()
 }
 function RequestLatentResult()
 {
+    latentoutput = undefined;
     var xmlHttp = new XMLHttpRequest();
     xmlHttp.onreadystatechange = function() {
         if(this.status == 200 && this.readyState == this.DONE) {
@@ -53,6 +54,7 @@ function HandleCurrentMap(response)
     vehicles = data["state"];
     routes = data["route"];
     latents = data["latents"];
+    predicteds = data["predicteds"];
 
     DrawSliders();
     DrawCanvas();
@@ -62,14 +64,15 @@ function HandleCurrentExp(response)
 {
     data = JSON.parse(response);
     max_step = data["max_step"];
-    latent_len = data["latent_len"];
+    latent_length = data["latent_len"];
 
     document.getElementById("slider_step").max = max_step;
     for(var i = 0; i < 8; ++i)
     {
-        if(i >= latent_len)
+        if(i >= latent_length)
             document.getElementById("div_l" + i).hidden = true;
     }
+    /*
     labels =[]
     for(var i = 0; i < max_step; ++i)
     {
@@ -77,6 +80,7 @@ function HandleCurrentExp(response)
     }
 
     linechart.data.labels = labels;
+    */
 
 }
 function HandleLatentResult(response)
@@ -87,6 +91,7 @@ function HandleLatentResult(response)
 }
 function HandleCurrentAgentResult(c, response)
 {
+    /*
     j = JSON.parse(response);
     datalist = [];
     const bordercolors = ["#FF1493", "#DC143C", "#FF4500", "#FFA500", "#4B0082", "#4169E1", "#008B8B", "#006400"]
@@ -115,4 +120,5 @@ function HandleCurrentAgentResult(c, response)
         linechart.data.datasets = datalist;
         linechart.update('none');
     }
+    */
 }
