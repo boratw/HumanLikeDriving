@@ -13,7 +13,7 @@ except IndexError:
 
 import tensorflow.compat.v1 as tf
 from laneinfo import LaneInfo, RouteTracer
-from network.DrivingStyle import DrivingStyleLearner
+from network.DrivingStyle2 import DrivingStyleLearner
 from datetime import datetime
 import numpy as np
 import pickle
@@ -25,13 +25,13 @@ import multiprocessing
 laneinfo = LaneInfo()
 laneinfo.Load_from_File("laneinfo_World10Opt.pkl")
 
-state_len = 59
+state_len = 67
 agent_for_each_train = 16
 global_latent_len = 4
 
 
 log_name = datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
-log_file = open("train_log/DrivingStyle/log_" + log_name + ".txt", "wt")
+log_file = open("train_log/DrivingStyle2/log_" + log_name + ".txt", "wt")
 
 def rotate(posx, posy, yawsin, yawcos):
     return posx * yawcos - posy * yawsin, posx * yawsin + posy * yawcos
@@ -70,12 +70,8 @@ def parallel_task(item):
                             px, py = rotate(relposx, relposy, yawsin, yawcos)
                             vx, vy = rotate(state_vector[j][3], state_vector[j][4], yawsin, yawcos)
                             relyaw = (state_vector[j][2] - state_vector[i][2])   * 0.017453293
-                            if relyaw < -np.pi:
-                                relyaw += 2 * np.pi
-                            elif relyaw > np.pi:
-                                relyaw -= 2 * np.pi
-                            other_vcs.append([relposx, relposy, relyaw, vx, vy, np.sqrt(relposx * relposx + relposy * relposy)])
-                    other_vcs = np.array(sorted(other_vcs, key=lambda s: s[5]))
+                            other_vcs.append([px, py, np.cos(relyaw), np.sin(relyaw), vx, vy, np.sqrt(relposx * relposx + relposy * relposy)])
+                    other_vcs = np.array(sorted(other_vcs, key=lambda s: s[6]))
                     velocity = np.sqrt(state_vector[i][3] ** 2 + state_vector[i][4] ** 2)
 
                     relposx = state_vectors[step+20][i][0] - x
@@ -106,14 +102,11 @@ def parallel_task(item):
                             k += 1
                         waypoints.extend([option[0], option[1], option[2], px, py])
                         
-                    px, py = 9999., 9999.
+                    px, py = 50., 0.
                     for t in state_vector[i][6]:
                         if np.sqrt(px * px + py * py) >  np.sqrt((t[0] - x) * (t[0] - x) + (t[1] - y) * (t[1] - y)):
                             px, py = rotate(t[0] - x, t[1] - y, yawsin, yawcos)
-                    if px == 9999.:
-                        px = 0.
-                        py = 0.
-                    history_exp[i].append( [np.concatenate([[velocity, state_vector[i][5], px, py], waypoints, other_vcs[:8,:5].flatten()]), route])
+                    history_exp[i].append( [np.concatenate([[velocity, (1. if state_vector[i][5] == 0. else 0.), px, py], waypoints, other_vcs[:8,:6].flatten()]), route])
             else:
                 torque_added[i] -= 1
     return history_exp
@@ -122,10 +115,12 @@ tf.disable_eager_execution()
 sess = tf.Session()
 with sess.as_default():
     with multiprocessing.Pool(processes=50) as pool:
-        learner = DrivingStyleLearner(state_len=state_len, agent_for_each_train=agent_for_each_train, global_latent_len=global_latent_len)
+        learner = DrivingStyleLearner(state_len=state_len, agent_for_each_train=agent_for_each_train, global_latent_len=global_latent_len, teacher_learner_lr=0.0001)
         learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
-        teacher_saver = tf.train.Saver(var_list=learner.teacher.trainable_dict, max_to_keep=0)
         sess.run(tf.global_variables_initializer())
+        #teacher_dict = { k:learner.trainable_dict[k] for k in learner.trainable_dict if not "Global" in k}
+        #teacher_saver = tf.train.Saver(var_list=teacher_dict, max_to_keep=0)
+        #teacher_saver.restore(sess, "train_log/DrivingStyle/log_21-04-2023-17-45-56_3350.ckpt")
         learner.network_initialize()
         log_file.write("Epoch" + learner.log_caption() + "\n")
 
@@ -143,7 +138,7 @@ with sess.as_default():
             history.append(history_data)
 
             print("Current History Length : " + str(len(history)))
-            for iter in range(len(history) * 32):
+            for iter in range(len(history) * 16):
 
                 data_index = random.randrange(len(history))
                 exp_index = random.randrange(len(history[data_index]))
@@ -160,7 +155,7 @@ with sess.as_default():
                 for x in range(16):
                     state_dic.extend([cur_history[agent_dic[x]][step][0] for step in step_dic[x]])
                     nextstate_dic.extend([cur_history[agent_dic[x]][step][1] for step in step_dic[x]])
-                learner.optimize(state_dic, nextstate_dic)
+                learner.optimize(epoch, state_dic, nextstate_dic)
         
                 
             if len(history) > 32:
@@ -173,5 +168,5 @@ with sess.as_default():
 
 
             if epoch % 50 == 0:
-                learner_saver.save(sess, "train_log/DrivingStyle/log_" + log_name + "_" + str(epoch) + ".ckpt")
+                learner_saver.save(sess, "train_log/DrivingStyle2/log_" + log_name + "_" + str(epoch) + ".ckpt")
 

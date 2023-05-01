@@ -19,7 +19,7 @@ function GenerateDocument()
             </div>
         </div>`
     }
-    
+    /*
     linechart = new Chart(document.getElementById('chart'),
         {
           type: 'line',
@@ -33,8 +33,8 @@ function GenerateDocument()
               },
               scales: {
                   y: {
-                      max: 20.,
-                      min: -20.,
+                      max: 4,
+                      min: -4,
                       ticks: {
                           stepSize: 1
                       }
@@ -48,7 +48,7 @@ function GenerateDocument()
             
               }
           }
-        })
+        });*/
 }
 
 function AssignEventHandlers()

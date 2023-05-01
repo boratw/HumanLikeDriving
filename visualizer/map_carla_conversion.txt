@@ -1,0 +1,7 @@
+world10
+const carla_scale = 10.55;
+const carla_x = 1410;
+const carla_y = 1040;
+const carla_rotate = 0;
+
+batjeon
