@@ -53,7 +53,7 @@ def parallel_task(item):
 
     torque_added = [0 for _ in range(100)]
     stepstart = random.randrange(50, 60)
-    for step in range(stepstart, len(state_vectors)-60, 5):
+    for step in range(stepstart, len(state_vectors)-60):
         for i in range(agent_count):
             if torque_added[i] == 0:
                 if state_vectors[step+20][i][9] != 0:
@@ -145,7 +145,7 @@ with sess.as_default():
                 agent_num = len(cur_history)
                 
                 agent_dic = random.choices(list(range(agent_num)), k=agent_for_each_train)
-                step_dic = [ random.choices(list(range(len(cur_history[x]))), k = 256) for x in agent_dic ]
+                step_dic = [ random.choices(list(range(len(cur_history[x]))), k = 128) for x in agent_dic ]
 
                 state_dic = []
                 nextstate_dic = []

@@ -60,6 +60,19 @@ function DrawCanvas()
     drawctx.strokeStyle = "rgba(0, 255, 0, 0.5)";
     drawctx.lineWidth = 0.5;
 
+    for(var k = 0; k < vehicles.length; ++k)
+    {
+        v = vehicles[k];
+        drawctx.save()
+        if(k == clicked)
+            drawctx.fillStyle = "rgb(255, 255, 0)";
+        drawctx.transform(1, 0, 0, 1, v[0], v[1])
+        drawctx.rotate(v[2])
+        drawctx.fillRect(-1.8, -0.7, 3.6, 1.4);
+        drawctx.restore()
+
+    }
+
     if(real_output != undefined)
     {
         if(real_output.length > 1)
@@ -79,29 +92,21 @@ function DrawCanvas()
     {
         if(latent_output.length > 1)
         {
-            drawctx.beginPath();
-            drawctx.moveTo(latent_output[0][0], latent_output[0][1]);
-            for(var i = 1; i < v.length; ++i)
+            for(v of latent_output)
             {
-                drawctx.lineTo(latent_output[i][0], latent_output[i][1]);
+                drawctx.beginPath();
+                drawctx.moveTo(v[0][0], v[0][1]);
+                for(var i = 1; i < v.length; ++i)
+                {
+                    drawctx.lineTo(v[i][0], v[i][1]);
+                }
+                drawctx.stroke();
+
             }
-            drawctx.stroke();
 
         }
     }
 
-    for(var k = 0; k < vehicles.length; ++k)
-    {
-        v = vehicles[k];
-        drawctx.save()
-        if(k == clicked)
-            drawctx.fillStyle = "rgb(255, 255, 0)";
-        drawctx.transform(1, 0, 0, 1, v[0], v[1])
-        drawctx.rotate(v[2])
-        drawctx.fillRect(-1.8, -0.7, 3.6, 1.4);
-        drawctx.restore()
-
-    }
     visctx.drawImage(drawctx.canvas, 0, 0);
 }
 

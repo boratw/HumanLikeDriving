@@ -25,6 +25,7 @@ class MLP:
 
             idim = input_dim
             out = self.layer_input
+            l2_loss = []
             for i, dim in enumerate(hidden_dims):
                 w = tf.get_variable("w" + str(i), shape=[idim, dim], dtype=tf.float32, 
                     initializer=tf.random_uniform_initializer(-1.0 / math.sqrt(idim + dim), 1.0 / math.sqrt(idim + dim), dtype=tf.float32),
@@ -33,6 +34,7 @@ class MLP:
                     initializer=tf.zeros_initializer(dtype=tf.float32),
                     trainable=True)
                 out = tf.matmul(out, w) + b
+                l2_loss.append(tf.reduce_mean(out ** 2))
                 if hidden_nonlns[i] == tf.nn.leaky_relu:
                     out = tf.nn.leaky_relu(out, alpha=0.001)
                 elif hidden_nonlns[i] != None:
@@ -48,6 +50,7 @@ class MLP:
                 initializer=tf.zeros_initializer(dtype=tf.float32),
                 trainable=True)
             out = tf.matmul(out, w) + b
+            l2_loss.append(tf.reduce_mean(out ** 2))
             if output_nonln == tf.nn.leaky_relu:
                 out = tf.nn.leaky_relu(out, alpha=0.001)
             elif output_nonln != None:
@@ -55,6 +58,7 @@ class MLP:
 
             self.layer_output = out
             self.trainable_params = tf.trainable_variables(scope=tf.get_variable_scope().name)
+            self.l2_loss = tf.reduce_mean(l2_loss)
 
     def build_add_weighted(self, source, weight):
         return [ tf.assign(target, (1 - weight) * target + weight * source) for target, source in zip(self.trainable_params, source.trainable_params)]
