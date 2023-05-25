@@ -12,7 +12,7 @@ function GenerateDocument()
             <span style="width:40px; display:inline-block">
             #${i < 4 ? 'G' + i : 'L' + i}
             </span><!--
-            --><input class="latentslider" id="slider_l${i}" type="range" min="-100" max="100" value="0">
+            --><input class="latentslider" id="slider_l${i}" type="range" min="-500" max="500" value="0">
             <span id="value_l${i}">0</span>
             <div class="latentbox">
                 <div class="latentinnerbox" id="box_l${i}"></div>
@@ -33,8 +33,8 @@ function GenerateDocument()
               },
               scales: {
                   y: {
-                      max: 20.,
-                      min: -20.,
+                      max: 10.,
+                      min: -10.,
                       ticks: {
                           stepSize: 1
                       }

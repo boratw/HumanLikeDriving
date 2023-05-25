@@ -24,7 +24,7 @@ try:
     world = client.get_world()
     laneinfo = LaneInfo()
     laneinfo.Load_from_World(world)
-    laneinfo.Save("laneinfo_World10Opt.pkl")
+    laneinfo.Save("laneinfo_Batjeon.pkl")
 
 
 

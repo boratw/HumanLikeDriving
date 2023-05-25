@@ -1,6 +1,7 @@
 import socket
 import threading
 import os
+import traceback
 
 class VisualizeServer():
     def __init__(self, port=5454):
@@ -82,6 +83,7 @@ class VisualizeServer():
                 "Not found"
             self.client_socket.send(msg.encode())
             print(e)
+            traceback.print_exc()
     
     def SendData(self, filename):
         try:
@@ -105,6 +107,7 @@ class VisualizeServer():
                 "Not found"
             self.client_socket.send(msg.encode())
             print(e)
+            traceback.print_exc()
 
     
     def Destroy(self):

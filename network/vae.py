@@ -92,6 +92,7 @@ class VAE_Encoder:
             self.layer_output = self.dist.sample()
             self.prior = tf.distributions.Normal(loc=tf.zeros_like(self.mu), scale=tf.ones_like(self.logsig))
 
+            self.log_pi = self.dist.log_prob(self.layer_output)
             self.regularization_loss = tf.reduce_mean(self.dist.kl_divergence(self.prior))
             self.trainable_params = tf.trainable_variables(scope=tf.get_variable_scope().name)
 

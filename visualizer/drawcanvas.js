@@ -22,6 +22,7 @@ var latents = {};
 var predicteds = [[]];
 var latent_data = {};
 var latent_output = undefined;
+var latent_idx = 10;
 var real_output = undefined;
 
 let draw_potential = false;
@@ -79,7 +80,7 @@ function DrawCanvas()
         {
             drawctx.beginPath();
             drawctx.moveTo(real_output[0][0], real_output[0][1]);
-            for(var i = 1; i < v.length; ++i)
+            for(var i = 1; i < real_output.length; ++i)
             {
                 drawctx.lineTo(real_output[i][0], real_output[i][1]);
             }
@@ -87,13 +88,28 @@ function DrawCanvas()
 
         }
     }
-    drawctx.strokeStyle = "rgba(255, 0, 0, 1.0)";
+    drawctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
     if(latent_output != undefined)
     {
         if(latent_output.length > 1)
         {
-            for(v of latent_output)
+            if(latent_idx == null)
             {
+                for(v of latent_output)
+                {
+                    drawctx.beginPath();
+                    drawctx.moveTo(v[0][0], v[0][1]);
+                    for(var i = 1; i < v.length; ++i)
+                    {
+                        drawctx.lineTo(v[i][0], v[i][1]);
+                    }
+                    drawctx.stroke();
+    
+                }
+            }
+            else
+            {
+                v = latent_output[latent_idx]
                 drawctx.beginPath();
                 drawctx.moveTo(v[0][0], v[0][1]);
                 for(var i = 1; i < v.length; ++i)
@@ -103,7 +119,6 @@ function DrawCanvas()
                 drawctx.stroke();
 
             }
-
         }
     }
 

@@ -36,18 +36,18 @@ class DrivingStyleLearner():
 
             #self.global_encoder_input = tf.concat([self.layer_input_nextstate - tf.stop_gradient(self.teacher.layer_output), self.layer_input_state], axis=1)
             self.global_encoder_input = tf.concat([self.layer_input_nextstate, self.layer_input_state], axis=1)
-            self.global_encoder = MLP(nextstate_len + state_len, global_latent_len, [256, 256], hidden_nonlns = tf.nn.elu, 
+            self.global_encoder = MLP(nextstate_len + state_len, global_latent_len, [256, 256, 256], hidden_nonlns = tf.nn.elu, 
                         input_tensor=self.global_encoder_input, name="GlobalEncoder", use_dropout=True, input_dropout=self.layer_dropout )
             global_latent = tf.reshape(self.global_encoder.layer_output, [agent_for_each_train, -1, global_latent_len])
             global_latent = tf.reduce_sum(global_latent, axis=1, keep_dims=True)
             self.global_latent = global_latent / tf.stop_gradient(tf.math.sqrt(tf.reduce_sum(global_latent ** 2, axis=2, keep_dims=True)) + 1e-7)
             #self.global_latent = tf.reduce_sum(tf.math.exp(tf.clip_by_value(global_latent, -100, 4)), axis=1, keep_dims=True)
-            global_latent_batch = tf.tile(self.global_latent, [1, tf.shape(self.global_encoder.layer_output)[0] // agent_for_each_train, 1])
+            global_latent_batch = tf.tile(self.global_latent, [1, 1, tf.shape(self.global_encoder.layer_output)[0] // agent_for_each_train])
             self.global_latent_batch = tf.reshape(global_latent_batch, [-1, global_latent_len])
             self.global_latent_output = self.global_encoder.layer_output
 
             if local_latent_len != 0:
-                self.local_encoder = MLP(nextstate_len + state_len, local_latent_len, [256, 128], hidden_nonlns = tf.nn.elu, 
+                self.local_encoder = MLP(nextstate_len + state_len, local_latent_len, [256, 256, 128], hidden_nonlns = tf.nn.elu, 
                             input_tensor=self.global_encoder_input, name="LocalEncoder", use_dropout=True, input_dropout=self.layer_dropout )
                 self.decoder_input = tf.concat([self.global_latent_batch, self.local_encoder.layer_output, self.layer_input_state], axis=1)
                 latent_decoder_input = tf.concat([self.layer_input_global_latent, self.layer_input_local_latent, self.layer_input_state], axis=1)
@@ -57,21 +57,21 @@ class DrivingStyleLearner():
 
             
 
-            self.decoder = MLP(global_latent_len + local_latent_len + state_len, nextstate_len, [256, 256], hidden_nonlns = tf.nn.elu, 
+            self.decoder = MLP(global_latent_len + local_latent_len + state_len, nextstate_len, [256, 256, 256], hidden_nonlns = tf.nn.elu, 
                         input_tensor=self.decoder_input, name="Decoder", use_dropout=True, input_dropout=self.layer_dropout  )
 
-            self.latent_decoder = MLP(global_latent_len + local_latent_len + state_len, nextstate_len, [256, 256], hidden_nonlns = tf.nn.elu, 
+            self.latent_decoder = MLP(global_latent_len + local_latent_len + state_len, nextstate_len, [256, 256, 256], hidden_nonlns = tf.nn.elu, 
                         input_tensor=latent_decoder_input, name="Decoder", reuse=True, use_dropout=True, input_dropout=self.layer_dropout )
             self.latent_decoder_output = self.latent_decoder.layer_output
             
             #self.teacher_loss = tf.reduce_mean((self.layer_input_nextstate - self.teacher.layer_output) ** 2)
             #self.global_reconstruction_loss = tf.reduce_mean(((self.layer_input_nextstate - tf.stop_gradient(self.teacher.layer_output)) - self.global_decoder.layer_output) ** 2)
-            self.reconstruction_loss = tf.reduce_mean((self.layer_input_nextstate  - self.decoder.layer_output) ** 2, axis=0)
-            self.global_regularization_loss = tf.reduce_mean(tf.abs(self.global_encoder.layer_output))
+            self.reconstruction_loss = tf.reduce_mean(tf.abs(self.layer_input_nextstate  - self.decoder.layer_output), axis=0)
+            self.global_regularization_loss = tf.reduce_mean(tf.reduce_mean(self.global_encoder.layer_output, axis=0) ** 2.) + (tf.reduce_mean(tf.math.reduce_variance(self.global_encoder.layer_output, axis=0)) - 1.) ** 2.
             self.global_l2_loss = self.global_encoder.l2_loss + self.decoder.l2_loss
 
             if local_latent_len != 0:
-                self.local_regularization_loss = tf.reduce_mean(tf.abs(self.local_encoder.layer_output))
+                self.local_regularization_loss = tf.reduce_mean(self.local_encoder.layer_output) ** 2. + (tf.reduce_mean(tf.math.reduce_variance(self.global_encoder.layer_output, axis=0)) - 1.) ** 2.
                 self.loss = tf.reduce_mean(self.reconstruction_loss) + self.global_regularization_loss * global_regularizer_weight +  self.local_regularization_loss * local_regularizer_weight \
                     + self.global_l2_loss * l2_regularizer_weight
             else:
