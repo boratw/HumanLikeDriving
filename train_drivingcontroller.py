@@ -14,8 +14,8 @@ except IndexError:
 import tensorflow.compat.v1 as tf
 from laneinfo import LaneInfo
 from lanetrace import LaneTrace
-from network.DrivingStyle7_2 import DrivingStyleLearner
-from network.DrivingControl import DrivingController
+from network.DrivingStyle7 import DrivingStyleLearner
+from network.DrivingStyleControl import DrivingStyleController
 from datetime import datetime
 import numpy as np
 import pickle
@@ -37,12 +37,11 @@ global_regularizer_weight = 0.01
 
 route_len = 6
 action_len = 3
-control_state_len = 4
-control_action_len = 2
+control_len = 2
 agent_num = 50
 
 log_name = datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
-log_file = open("train_log/DrivingControl/log_" + log_name + ".txt", "wt")
+log_file = open("train_log/DrivingStyle4/log_" + log_name + ".txt", "wt")
 
 def rotate(posx, posy, yawsin, yawcos):
     return posx * yawcos - posy * yawsin, posx * yawsin + posy * yawcos
@@ -66,14 +65,7 @@ def parallel_task(item):
     other_vcs = np.array(sorted(other_vcs, key=lambda s: s[6]))
     velocity = np.sqrt(item[4] ** 2 + item[5] ** 2)
 
-    if velocity > 0.1:
-        impatiece[i] += (30.0 - velocity - 5.0) * 0.01
-    else:
-        impatiece[i] = 0.
-    if impatiece[i] < 0.:
-        impatiece[i] = 0.
 
-    traced, tracec = lane_tracers[i].Trace(x, y)
     route = []
     if traced == None:
         for trace in range(action_len):
@@ -89,6 +81,8 @@ def parallel_task(item):
                 waypoints.extend([px, py])
             route.append(waypoints)
     
+
+
     px, py = 50., 0.
     for t in item[7]:
         if (px * px + py * py) >  ((t[0] - x) * (t[0] - x) + (t[1] - y) * (t[1] - y)):
@@ -145,7 +139,7 @@ try:
             learner = DrivingStyleLearner(state_len=state_len, nextstate_len=nextstate_len, agent_for_each_train=agent_for_each_train, global_latent_len=global_latent_len, 
                                       l2_regularizer_weight=l2_regularizer_weight, global_regularizer_weight=global_regularizer_weight, route_len=route_len, action_len= action_len)
             learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
-            controller = DrivingController(state_len=control_state_len, action_len=control_action_len, l2_regularizer_weight=l2_regularizer_weight)
+            controller = DrivingStyleController(state_len=state_len, action_len=action_len, global_latent_len=global_latent_len, l2_regularizer_weight=l2_regularizer_weight)
             controller_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
             sess.run(tf.global_variables_initializer())
             learner_saver.restore(sess, "train_log/DrivingStyle4/log_12-05-2023-15-34-16_2250.ckpt")
@@ -171,24 +165,13 @@ try:
                     if actor:
                         vehicles_list.append(actor)
                 
-                world.tick()
-                world.tick()
-                world.tick()
-                world.tick()
-                world.tick()
-                latent = np.random.normal(0.0, 2.0, (agent_num, global_latent_len))
-                result_vectors = []
                 for step in range(1000):
                     states = []
                     state_vectors = []
                     route_vectors = []
-                    control_state_vectors = []
-                    reward_mean = 0.
                     for i, actor in enumerate(vehicles_list):
                         tr = actor.get_transform()
                         v = actor.get_velocity()
-                        a = actor.get_get_acceleration()
-                        forward = tr.get_forward_vector()
                         try:
                             tlight = actor.get_traffic_light()
                             tlight_state = tlight.get_state()
@@ -198,81 +181,59 @@ try:
                             tlight_state = carla.TrafficLightState.Unknown
                             tlight_pos = []
                         states.append([i, tr.location.x, tr.location.x, tr.rotation.yaw, v.x, v.y, tlight_state, tlight_pos])
-                        control_state_vectors.append([forward.dot(v), forward.dot(a)])
                     
                     for state, route in pool.imap(parallel_task, states):
                         state_vectors.append(state)
                         route_vectors.append(route)
 
-                    nextstate, action = learner.get_global_decoded(state_vectors, route_vectors, latent)
-                    for i, actor in enumerate(vehicles_list):
-                        if action[i] != 0:
-                            control_traget[i] = action[i]
-                        control_state_vectors[i].extend(nextstate[i])
-
-                    control_action = controller.get_action(control_state_vectors)
-                    np.clip(control_action, -1, 1)
-                    vehiclecontrols = []
-                    for i, actor in enumerate(vehicles_list):
-                        if random.random() < 0.5 * np.exp(-epoch / 100):
-                            control_action[i][0] = control_action[i][0] * 0.5 + np.random.uniform(-0.25, 0.5)
-                            control_action[i][1] = control_action[i][1] * 0.5 + np.random.uniform(-0.1, 0.1)
-                        vc = carla.VehicleControl()
-                        if control_action[i][0] < 0.:
-                            vc.throttle = 0.
-                            vc.brake = -control_action[i][0]
-                        else:
-                            vc.throttle = control_action[i][0]
-                            vc.brake = 0.
-                        vc.steer = control_action[i][1]
-
-                        result_vectors.append([control_state_vectors[i], control_action[i], states[i][1], states[i][2], states[i][3]])
-                        vehiclecontrols.append(vc)
                     
-                    client.apply_batch(vehiclecontrols)
-                    world.tick()
-                        
-                    if len(result_vectors) >= 20:
-                        for i, actor in enumerate(vehicles_list):
-                            yawsin = np.sin(result_vectors[0][i][4] * -0.017453293)
-                            yawcos = np.cos(result_vectors[0][i][4] * -0.017453293)
-                            px, py = rotate(states[i][1], states[i][2], yawsin, yawcos)
 
-                            reward = 1. - (px - result_vectors[0][i][0][2]) ** 2 - (py - result_vectors[0][i][0][3]) ** 2
-                            reward_mean += reward
-                            history.append([result_vectors[0][i][0], result_vectors[0][i][1], result_vectors[1][i][0], [reward]])
 
-                        result_vectors = result_vectors[1:]
-                    print("Step " + str(step) + " Reward " + str(reward_mean / agent_num))
 
-                client.apply_batch([carla.command.DestroyActor(x) for x in vehicles_list])
+
+                pkl_index = random.randrange(51)
+                with open("data/gathered_from_npc_batjeon2/data_" + str(pkl_index) + ".pkl","rb") as fr:
+                    data = pickle.load(fr)
+                print("Epoch " + str(epoch) + " Start with data " + str(pkl_index))
+
+                history_data = []
+                for result in pool.imap_unordered(parallel_task, data):
+                    history_data.append(result)
+                history.append(history_data)
 
                 print("Current History Length : " + str(len(history)))
-                for iter in range(32):
-
-                    dic = random.sample(range(len(history)), len(history) if len(history) < 64 else 64)
-
-                    state_dic = [history[x][0] for x in dic]
-                    action_dic = [history[x][1] for x in dic]
-                    nextstate_dic = [history[x][2] for x in dic]
-                    reward_dic = [history[x][3] for x in dic]
+                for iter in range(len(history) * 32):
 
                     data_index = random.randrange(len(history))
                     exp_index = random.randrange(len(history[data_index]))
+                    if iter % 32 == 31:
+                        print("Train Step #" + str(iter) + "Read data " + str(data_index) + " exp " + str(exp_index))
 
-                    controller.optimize(epoch, state_dic, nextstate_dic, action_dic, reward_dic)
+                    cur_history = history[data_index][exp_index]
+                    agent_num = len(cur_history)
+                    
+                    agent_dic = random.choices(list(range(agent_num)), k=agent_for_each_train)
+                    step_dic = [ random.choices(list(range(len(cur_history[x]))), k = 128) for x in agent_dic ]
+
+                    state_dic = []
+                    nextstate_dic = []
+                    for x in range(agent_for_each_train):
+                        state_dic.extend([cur_history[agent_dic[x]][step][0] for step in step_dic[x]])
+                        nextstate_dic.extend([cur_history[agent_dic[x]][step][1] for step in step_dic[x]])
+                    learner.optimize(epoch, state_dic, nextstate_dic)
             
                     
-                history = history[(len(history) / 32 ):]
+                if len(history) > 32:
+                    history = history[1:]
 
-                controller.log_print()
+                learner.log_print()
                 log_file.write(str(epoch) + "\t" + learner.current_log() + "\n")
                 log_file.flush()
-                controller.network_update()
+                learner.network_update()
 
 
                 if epoch % 50 == 0:
-                    controller_saver.save(sess, "train_log/DrivingControl/log_" + log_name + "_" + str(epoch) + ".ckpt")
+                    learner_saver.save(sess, "train_log/DrivingStyle4/log_" + log_name + "_" + str(epoch) + ".ckpt")
 
 
 finally:

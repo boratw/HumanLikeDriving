@@ -7,8 +7,8 @@ from network.onedcnn import OneDCnn
 
 
 
-class DrivingStyleController():
-    def __init__(self, name=None, reuse=False, state_len = 59, action_len = 2, global_latent_len = 4,
+class DrivingController():
+    def __init__(self, name=None, reuse=False, state_len = 5, action_len = 2,
                  learner_lr_start = 1, learner_lr_end = 0.01, learner_lr_step = 1000, value_lr=0.001, policy_lr=0.001, alpha_lr=0.001,
                  policy_regularizer_weight=0.001, l2_regularizer_weight=0.0001, policy_update_ratio=0.5, policy_gamma=0.9):
 
@@ -16,7 +16,6 @@ class DrivingStyleController():
             self.name = "DrivingStyleController"
         else:
             self.name = "DrivingStyleController" + name
-        self.global_latent_len = global_latent_len
         self.action_len = action_len
         self.target_entropy=-action_len
         
@@ -25,7 +24,6 @@ class DrivingStyleController():
             self.layer_input_state = tf.placeholder(tf.float32, [None, state_len], name="layer_input_state")
             self.layer_input_nextstate = tf.placeholder(tf.float32, [None, state_len], name="layer_input_nextstate")
             self.layer_input_action = tf.placeholder(tf.float32, [None, action_len], name="layer_input_action")
-            self.layer_input_global_latent = tf.placeholder(tf.float32, [None, global_latent_len], name="layer_input_global_latent")
             self.layer_input_reward = tf.placeholder(tf.float32, [None, 1], name="layer_input_reward")
 
 
@@ -39,22 +37,20 @@ class DrivingStyleController():
             self.policy_lr = self.lr * policy_lr
             self.alpha_lr = self.lr * alpha_lr
 
-            policy_input = tf.concat([self.layer_input_state, self.layer_input_global_latent], axis=1)
-            self.policy = VAE_Encoder(state_len + global_latent_len, action_len * 2, [256, 256], hidden_nonlns = tf.nn.elu, input_tensor=policy_input, name="Policy")
-            next_policy_input = tf.concat([self.layer_input_nextstate, self.layer_input_global_latent], axis=1)
-            self.next_policy = VAE_Encoder(state_len + global_latent_len, action_len * 2, [256, 256], hidden_nonlns = tf.nn.elu, input_tensor=next_policy_input, name="Policy", reuse=True)
+            self.policy = VAE_Encoder(state_len, action_len * 2, [256, 256], hidden_nonlns = tf.nn.leaky_relu, input_tensor=self.layer_input_state, name="Policy")
+            self.next_policy = VAE_Encoder(state_len, action_len * 2, [256, 256], hidden_nonlns = tf.nn.leaky_relu, input_tensor=self.layer_input_nextstate, name="Policy", reuse=True)
             
-            qvalue_input = tf.concat([self.layer_input_state, self.layer_input_global_latent, self.layer_input_action], axis=1)
-            self.qvalue1 = MLP(state_len + global_latent_len + action_len, 1, [256, 256], hidden_nonlns = tf.nn.elu, input_tensor=qvalue_input, name="Qvalue1")
-            self.qvalue2 = MLP(state_len + global_latent_len + action_len, 1, [256, 256], hidden_nonlns = tf.nn.elu, input_tensor=qvalue_input, name="Qvalue2")
+            qvalue_input = tf.concat([self.layer_input_state, self.layer_input_action], axis=1)
+            self.qvalue1 = MLP(state_len + action_len, 1, [256, 256], hidden_nonlns = tf.nn.leaky_relu, input_tensor=qvalue_input, name="Qvalue1")
+            self.qvalue2 = MLP(state_len + action_len, 1, [256, 256], hidden_nonlns = tf.nn.leaky_relu, input_tensor=qvalue_input, name="Qvalue2")
 
-            qvalue_policy_input = tf.concat([self.layer_input_state, self.layer_input_global_latent, self.policy.layer_output], axis=1) 
-            self.qvalue_policy1 = MLP(state_len + global_latent_len + action_len, 1, [256, 256], hidden_nonlns = tf.nn.elu, input_tensor=qvalue_policy_input, name="Qvalue1", reuse=True)
-            self.qvalue_policy2 = MLP(state_len + global_latent_len + action_len, 1, [256, 256], hidden_nonlns = tf.nn.elu, input_tensor=qvalue_policy_input, name="Qvalue2", reuse=True)
+            qvalue_policy_input = tf.concat([self.layer_input_state, self.policy.layer_output], axis=1) 
+            self.qvalue_policy1 = MLP(state_len + action_len, 1, [256, 256], hidden_nonlns = tf.nn.leaky_relu, input_tensor=qvalue_policy_input, name="Qvalue1", reuse=True)
+            self.qvalue_policy2 = MLP(state_len + action_len, 1, [256, 256], hidden_nonlns = tf.nn.leaky_relu, input_tensor=qvalue_policy_input, name="Qvalue2", reuse=True)
 
-            next_qvalue_input = tf.concat([self.layer_input_nextstate, self.layer_input_global_latent, self.next_policy.layer_output], axis=1)
-            self.next_qvalue1 = MLP(state_len + global_latent_len + action_len, 1, [256, 256], hidden_nonlns = tf.nn.elu, input_tensor=next_qvalue_input, name="Qvalue_Target1")
-            self.next_qvalue2 = MLP(state_len + global_latent_len + action_len, 1, [256, 256], hidden_nonlns = tf.nn.elu, input_tensor=next_qvalue_input, name="Qvalue_Target2")
+            next_qvalue_input = tf.concat([self.layer_input_nextstate, self.next_policy.layer_output], axis=1)
+            self.next_qvalue1 = MLP(state_len + action_len, 1, [256, 256], hidden_nonlns = tf.nn.leaky_relu, input_tensor=next_qvalue_input, name="Qvalue_Target1")
+            self.next_qvalue2 = MLP(state_len + action_len, 1, [256, 256], hidden_nonlns = tf.nn.leaky_relu, input_tensor=next_qvalue_input, name="Qvalue_Target2")
 
             self.qvalue1_assign = self.next_qvalue1.build_add_weighted(self.qvalue1, 1.0)
             self.qvalue1_update = self.next_qvalue1.build_add_weighted(self.qvalue1, policy_update_ratio)

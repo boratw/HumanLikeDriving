@@ -122,8 +122,6 @@ try:
         desired_velocity = [ 11.1111 * (1.0 - vehicle_speed[i] / 100.0)  for i in range(agent_num) ]
 
         impatient_lane_change = [ np.random.uniform(0.0, 1.0) for i in range(agent_num) ]
-        unsteady_steer = [ np.random.uniform(0.0, 0.01) for i in range(agent_num) ]
-        unsteady_throttle = [ np.random.uniform(0.0, 0.005) for i in range(agent_num) ]
         
         for iteration in range(20):
             print("exp " + str(exp) + " : " + str(iteration))
@@ -172,8 +170,6 @@ try:
             torque_added = [ 0 for _ in range(agent_num) ]
             
             impatiece = [ 0.0 for i in range(agent_num) ]
-            steer_bias = [ 0.0 for i in range(agent_num) ]
-            throttle_bias = [ 0.0 for i in range(agent_num) ]
 
             world.tick()
             for step in range(5000):
@@ -207,7 +203,7 @@ try:
                     
                     vel = np.sqrt(v.x * v.x + v.y * v.y)
                     if vel > 0.1:
-                        impatiece[i] += (desired_velocity[i] - vel - 10.0) * 0.01
+                        impatiece[i] += (desired_velocity[i] - vel - 5.0) * 0.01
                     else:
                        impatiece[i] = 0.
                     if impatiece[i] < 0.:
@@ -216,8 +212,6 @@ try:
                     traffic_manager.random_left_lanechange_percentage(actor, impatient_lane_change[i] * impatiece[i])
                     traffic_manager.random_right_lanechange_percentage(actor, impatient_lane_change[i] * impatiece[i])
 
-                    steer_bias[i] = np.random.normal(0.0, unsteady_steer[i]) + steer_bias[i] * 0.95
-                    throttle_bias[i] = np.random.normal(0.0, unsteady_steer[i]) + throttle_bias[i] * 0.95
 
 
                     if random.random() < (1 / 200):
@@ -233,14 +227,9 @@ try:
                         vc.brake = np.clip(vc.brake + brake_add[i], 0.0, 1.0)
                         vehiclecontrols.append(carla.command.ApplyVehicleControl(actor, vc))
                         torque_added[i] -= 1
-                    else:
-                        vc = actor.get_control()
-                        vc.steer = np.clip(vc.steer + steer_bias[i], -1.0, 1.0)
-                        vc.throttle = np.clip(vc.throttle + throttle_bias[i], 0.0, 1.0)
-                        vehiclecontrols.append(carla.command.ApplyVehicleControl(actor, vc))
 
                     state = [tr.location.x, tr.location.y, tr.rotation.yaw, v.x, v.y, tlight_state, tlight_pos, fail, traj_pos]
-                    control = [torque_added[i], impatiece[i], steer_bias[i], throttle_bias[i]]
+                    control = [torque_added[i], impatiece[i]]
 
                     state_vector.append(state)
                     control_vector.append(control)
@@ -253,11 +242,11 @@ try:
 
 
             save_obj = {}
-            save_obj["params"] = [ [distance_to_leading_vehicle[i], vehicle_lane_offset[i], vehicle_speed[i], impatient_lane_change[i], unsteady_steer[i], unsteady_throttle[i]] for i in range(agent_num) ]
+            save_obj["params"] = [ [distance_to_leading_vehicle[i], vehicle_lane_offset[i], vehicle_speed[i], impatient_lane_change[i]] for i in range(agent_num) ]
             save_obj["state_vectors"] = state_vectors
             save_obj["control_vectors"] = control_vectors
             save_objs.append(save_obj)
-        with open("data/gathered_from_npc_batjeon3/data_" + str(exp) + ".pkl","wb") as fw:
+        with open("data/gathered_from_npc_batjeon4/data_" + str(exp) + ".pkl","wb") as fw:
             pickle.dump(save_objs, fw)
 
 

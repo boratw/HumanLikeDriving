@@ -14,7 +14,7 @@ except IndexError:
 import tensorflow.compat.v1 as tf
 from laneinfo import LaneInfo
 from lanetrace import LaneTrace
-from network.DrivingStyle6 import DrivingStyleLearner
+from network.DrivingStyle7_2 import DrivingStyleLearner
 from datetime import datetime
 import numpy as np
 import pickle
@@ -26,8 +26,10 @@ import multiprocessing
 laneinfo = LaneInfo()
 laneinfo.Load_from_File("laneinfo_Batjeon.pkl")
 
-state_len = 53 + 6
+state_len = 53 
 nextstate_len = 2
+route_len = 6
+action_len = 3
 agent_for_each_train = 8
 global_latent_len = 4
 l2_regularizer_weight = 0.0001
@@ -35,7 +37,7 @@ global_regularizer_weight = 0.01
 
 
 log_name = datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
-log_file = open("train_log/DrivingStyle6/log_" + log_name + ".txt", "wt")
+log_file = open("train_log/DrivingStyle7/log_" + log_name + ".txt", "wt")
 
 ReadOption = { "LaneFollow" : 0,
               "Left" : 1,
@@ -89,21 +91,24 @@ def parallel_task(item):
                             relposx = state_vectors[step + 20][i][0] - state_vectors[step][i][0]
                             relposy = state_vectors[step + 20][i][1] - state_vectors[step][i][1]
                             px, py = rotate(relposx, relposy, yawsin, yawcos)
-                            route = [px, py]
+                            nextstate = [px, py]
                                 
-                            waypoints = []
-                            trace_result = traced[0]
+                            trace_result = 0
                             if len(state_vectors[step][i][8]) >= 1:
                                 mindist = 99999
-                                for trace, c in zip(traced, tracec):
-                                    if c:
-                                        dist = (trace[1][0] - state_vectors[step][i][8][0][1]) ** 2 + (trace[1][1] - state_vectors[step][i][8][0][2]) ** 2
+                                for j in range(len(traced)):
+                                    if tracec[j]:
+                                        dist = (traced[j][1][0] - state_vectors[step][i][8][0][1]) ** 2 + (traced[j][1][1] - state_vectors[step][i][8][0][2]) ** 2
                                         if dist < mindist:
-                                            trace_result = trace
+                                            trace_result = j
                                             mindist = dist
-                            for j in trace_result:
-                                px, py = rotate(j[0] - x, j[1] - y, yawsin, yawcos)
-                                waypoints.extend([px, py])
+                            route = []
+                            for trace in traced:
+                                waypoints = []
+                                for j in trace:
+                                    px, py = rotate(j[0] - x, j[1] - y, yawsin, yawcos)
+                                    waypoints.extend([px, py])
+                                route.append(waypoints)
 
                             
                                 
@@ -111,7 +116,7 @@ def parallel_task(item):
                             for t in state_vectors[step][i][6]:
                                 if (px * px + py * py) >  ((t[0] - x) * (t[0] - x) + (t[1] - y) * (t[1] - y)):
                                     px, py = rotate(t[0] - x, t[1] - y, yawsin, yawcos)
-                            history_exp[i].append( [np.concatenate([[velocity, (1. if state_vectors[step][i][5] == 0. else 0.), px, py, control_vectors[step][i][1]], waypoints, other_vcs[:8,:6].flatten()]), route])
+                            history_exp[i].append( [np.concatenate([[velocity, (1. if state_vectors[step][i][5] == 0. else 0.), px, py, control_vectors[step][i][1]], other_vcs[:8,:6].flatten()]), nextstate, route, trace_result])
             else:
                 torque_added[i] -= 1
     history = []
@@ -125,7 +130,7 @@ sess = tf.Session()
 with sess.as_default():
     with multiprocessing.Pool(processes=50) as pool:
         learner = DrivingStyleLearner(state_len=state_len, nextstate_len=nextstate_len, agent_for_each_train=agent_for_each_train, global_latent_len=global_latent_len, 
-                                      l2_regularizer_weight=l2_regularizer_weight, global_regularizer_weight=global_regularizer_weight)
+                                      l2_regularizer_weight=l2_regularizer_weight, global_regularizer_weight=global_regularizer_weight, route_len=route_len, action_len= action_len)
         learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
         sess.run(tf.global_variables_initializer())
         #teacher_dict = { k:learner.trainable_dict[k] for k in learner.trainable_dict if not "Global" in k}
@@ -163,10 +168,14 @@ with sess.as_default():
 
                 state_dic = []
                 nextstate_dic = []
+                route_dic = []
+                action_dic = []
                 for x in range(agent_for_each_train):
                     state_dic.extend([cur_history[agent_dic[x]][step][0] for step in step_dic[x]])
                     nextstate_dic.extend([cur_history[agent_dic[x]][step][1] for step in step_dic[x]])
-                learner.optimize(epoch, state_dic, nextstate_dic)
+                    route_dic.extend([cur_history[agent_dic[x]][step][2] for step in step_dic[x]])
+                    action_dic.extend([cur_history[agent_dic[x]][step][3] for step in step_dic[x]])
+                learner.optimize(epoch, state_dic, nextstate_dic, route_dic, action_dic)
         
                 
             if len(history) > 32:
@@ -179,5 +188,5 @@ with sess.as_default():
 
 
             if epoch % 50 == 0:
-                learner_saver.save(sess, "train_log/DrivingStyle6/log_" + log_name + "_" + str(epoch) + ".ckpt")
+                learner_saver.save(sess, "train_log/DrivingStyle7/log_" + log_name + "_" + str(epoch) + ".ckpt")
 
