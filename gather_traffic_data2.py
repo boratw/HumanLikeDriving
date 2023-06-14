@@ -60,7 +60,7 @@ vehicles_list = []
 client = carla.Client('127.0.0.1', 2000)
 client.set_timeout(10.0)
 
-agent_num = 50
+agent_num = 150
 
 try:
     world = client.get_world()
@@ -75,7 +75,7 @@ try:
     settings.max_substeps = 10
     settings.synchronous_mode = True
     settings.fixed_delta_seconds = 0.05
-    settings.no_rendering_mode = True
+    #settings.no_rendering_mode = True
     world.apply_settings(settings)
 
     blueprints = world.get_blueprint_library().filter('vehicle.*')
@@ -121,7 +121,7 @@ try:
         ignore_light = [ np.random.uniform(0.0, 1.0) for i in range(agent_num) ]
         desired_velocity = [ 11.1111 * (1.0 - vehicle_speed[i] / 100.0)  for i in range(agent_num) ]
 
-        impatient_lane_change = [ np.random.uniform(0.0, 1.0) for i in range(agent_num) ]
+        impatient_lane_change = [ np.random.uniform(10.0, 50.0) for i in range(agent_num) ]
         
         for iteration in range(20):
             print("exp " + str(exp) + " : " + str(iteration))
@@ -203,14 +203,15 @@ try:
                     
                     vel = np.sqrt(v.x * v.x + v.y * v.y)
                     if vel > 0.1:
-                        impatiece[i] += (desired_velocity[i] - vel - 5.0) * 0.01
+                        impatiece[i] += (desired_velocity[i] - vel - 3.0) * 0.02
                     else:
                        impatiece[i] = 0.
                     if impatiece[i] < 0.:
                         impatiece[i] = 0.
                     
-                    traffic_manager.random_left_lanechange_percentage(actor, impatient_lane_change[i] * impatiece[i])
-                    traffic_manager.random_right_lanechange_percentage(actor, impatient_lane_change[i] * impatiece[i])
+                    if impatient_lane_change[i] < impatiece[i]:
+                        traffic_manager.random_left_lanechange_percentage(actor, (impatiece[i] - impatient_lane_change[i]) * impatiece[i] / 100.)
+                        traffic_manager.random_right_lanechange_percentage(actor, (impatiece[i] - impatient_lane_change[i]) * impatiece[i] / 100.)
 
 
 
@@ -246,7 +247,7 @@ try:
             save_obj["state_vectors"] = state_vectors
             save_obj["control_vectors"] = control_vectors
             save_objs.append(save_obj)
-        with open("data/gathered_from_npc_batjeon4/data_" + str(exp) + ".pkl","wb") as fw:
+        with open("data/gathered_from_npc_batjeon5/data_" + str(exp) + ".pkl","wb") as fw:
             pickle.dump(save_objs, fw)
 
 

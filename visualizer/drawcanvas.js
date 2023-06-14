@@ -22,7 +22,7 @@ var latents = {};
 var predicteds = [[]];
 var latent_data = {};
 var latent_output = undefined;
-var latent_idx = 10;
+var latent_idx = null;
 var real_output = undefined;
 
 let draw_potential = false;

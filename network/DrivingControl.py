@@ -9,7 +9,7 @@ from network.onedcnn import OneDCnn
 
 class DrivingController():
     def __init__(self, name=None, reuse=False, state_len = 5, action_len = 2,
-                 learner_lr_start = 1, learner_lr_end = 0.01, learner_lr_step = 1000, value_lr=0.001, policy_lr=0.001, alpha_lr=0.001,
+                 learner_lr_start = 1, learner_lr_end = 0.01, learner_lr_step = 1000, value_lr=0.001, policy_lr=0.0001, alpha_lr=0.001,
                  policy_regularizer_weight=0.001, l2_regularizer_weight=0.0001, policy_update_ratio=0.5, policy_gamma=0.9):
 
         if name == None:
@@ -37,8 +37,8 @@ class DrivingController():
             self.policy_lr = self.lr * policy_lr
             self.alpha_lr = self.lr * alpha_lr
 
-            self.policy = VAE_Encoder(state_len, action_len * 2, [256, 256], hidden_nonlns = tf.nn.leaky_relu, input_tensor=self.layer_input_state, name="Policy")
-            self.next_policy = VAE_Encoder(state_len, action_len * 2, [256, 256], hidden_nonlns = tf.nn.leaky_relu, input_tensor=self.layer_input_nextstate, name="Policy", reuse=True)
+            self.policy = VAE_Encoder(state_len, action_len, [256, 256], hidden_nonlns = tf.nn.leaky_relu, input_tensor=self.layer_input_state, name="Policy")
+            self.next_policy = VAE_Encoder(state_len, action_len, [256, 256], hidden_nonlns = tf.nn.leaky_relu, input_tensor=self.layer_input_nextstate, name="Policy", reuse=True)
             
             qvalue_input = tf.concat([self.layer_input_state, self.layer_input_action], axis=1)
             self.qvalue1 = MLP(state_len + action_len, 1, [256, 256], hidden_nonlns = tf.nn.leaky_relu, input_tensor=qvalue_input, name="Qvalue1")
@@ -62,12 +62,12 @@ class DrivingController():
             
             self.qvalue1_optimizer = tf.train.AdamOptimizer(self.value_lr)
             self.qvalue1_rec_loss = tf.reduce_mean((self.qvalue1.layer_output - Q_target) ** 2)
-            self.qvalue1_loss = self.qvalue1_reg_loss + self.qvalue1.l2_loss * l2_regularizer_weight
+            self.qvalue1_loss = self.qvalue1_rec_loss + self.qvalue1.l2_loss * l2_regularizer_weight
             self.qvalue1_train = self.qvalue1_optimizer.minimize(self.qvalue1_loss, var_list=self.qvalue1.trainable_params)
 
             self.qvalue2_optimizer = tf.train.AdamOptimizer(self.value_lr)
             self.qvalue2_rec_loss = tf.reduce_mean((self.qvalue2.layer_output - Q_target) ** 2)
-            self.qvalue2_loss = self.qvalue2_reg_loss + self.qvalue2.l2_loss * l2_regularizer_weight
+            self.qvalue2_loss = self.qvalue2_rec_loss + self.qvalue2.l2_loss * l2_regularizer_weight
             self.qvalue2_train = self.qvalue2_optimizer.minimize(self.qvalue2_loss, var_list=self.qvalue2.trainable_params)
             
             mean_Q = tf.reduce_mean([self.qvalue_policy1.layer_output, self.qvalue_policy2.layer_output], axis=0)
@@ -126,9 +126,9 @@ class DrivingController():
         self.log_alpha = 0.
         self.log_num = 0
             
-    def optimize(self, iteration_num, input_state, input_nextstate, input_action, input_reward, input_global_latent):
+    def optimize(self, iteration_num, input_state, input_nextstate, input_action, input_reward):
         input_list = {self.layer_iteration_num : iteration_num, self.layer_input_state : input_state, self.layer_input_nextstate: input_nextstate,
-                      self.layer_input_action : input_action, self.input_reward : input_reward, self.layer_input_global_latent : input_global_latent}
+                      self.layer_input_action : input_action, self.layer_input_reward : input_reward}
         sess = tf.get_default_session()
         _, _, l1, l2, l3, l4, l5, l6 = sess.run([self.qvalue1_train, self.qvalue2_train, self.qvalue1_average, self.qvalue2_average, 
                                                  self.qvalue1_rec_loss, self.qvalue2_rec_loss, self.qvalue1.l2_loss, self.qvalue2.l2_loss],input_list)
@@ -148,8 +148,8 @@ class DrivingController():
         self.log_alpha += l10
         self.log_num += 1
 
-    def get_action(self, input_state, input_global_latent):
-        input_list = {self.layer_input_state : input_state, self.layer_input_global_latent: input_global_latent}
+    def get_action(self, input_state):
+        input_list = {self.layer_input_state : input_state}
         sess = tf.get_default_session()
         out = sess.run(self.policy.layer_output, input_list)
         return out
@@ -170,13 +170,13 @@ class DrivingController():
     def log_print(self):
         log_num = (self.log_num if self.log_num > 0 else 1)
         print ( self.name \
-            + "\n\_Qvalue1_Average        : " + str(self.log_qvalue1_avg / log_num) \
-            + "\n\_Qvalue1_Loss           : " + str(self.log_qvalue1_rec / log_num) \
-            + "\n\_Qvalue1_L2Loss         : " + str(self.log_qvalue1_reg / log_num) \
-            + "\n\_Qvalue2_Average        : " + str(self.log_qvalue2_avg / log_num) \
-            + "\n\_Qvalue2_Loss           : " + str(self.log_qvalue2_rec / log_num) \
-            + "\n\_Qvalue2_L2Loss         : " + str(self.log_qvalue2_reg / log_num) \
-            + "\n\_Policy_Loss            : " + str(self.log_policy_reg / log_num) \
-            + "\n\_Policy_DivLoss         : " + str(self.log_policy_div_rec / log_num) \
-            + "\n\_Policy_L2Loss          : " + str(self.log_policy_l2_rec / log_num) \
-            + "\n\_Alpha                  : " + str(self.log_alpha / log_num) )
+            + "\n\tQvalue1_Average        : " + str(self.log_qvalue1_avg / log_num) \
+            + "\n\tQvalue1_Loss           : " + str(self.log_qvalue1_rec / log_num) \
+            + "\n\tQvalue1_L2Loss         : " + str(self.log_qvalue1_reg / log_num) \
+            + "\n\tQvalue2_Average        : " + str(self.log_qvalue2_avg / log_num) \
+            + "\n\tQvalue2_Loss           : " + str(self.log_qvalue2_rec / log_num) \
+            + "\n\tQvalue2_L2Loss         : " + str(self.log_qvalue2_reg / log_num) \
+            + "\n\tPolicy_Loss            : " + str(self.log_policy_reg / log_num) \
+            + "\n\tPolicy_DivLoss         : " + str(self.log_policy_div_rec / log_num) \
+            + "\n\tPolicy_L2Loss          : " + str(self.log_policy_l2_rec / log_num) \
+            + "\n\tAlpha                  : " + str(self.log_alpha / log_num) )

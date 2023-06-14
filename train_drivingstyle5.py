@@ -124,7 +124,7 @@ def parallel_task(item):
 tf.disable_eager_execution()
 sess = tf.Session()
 with sess.as_default():
-    with multiprocessing.Pool(processes=50) as pool:
+    with multiprocessing.Pool(processes=20) as pool:
         learner = DrivingStyleLearner(state_len=state_len, nextstate_len=nextstate_len, agent_for_each_train=agent_for_each_train, global_latent_len=global_latent_len, 
                                       l2_regularizer_weight=l2_regularizer_weight, global_regularizer_weight=global_regularizer_weight)
         learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
