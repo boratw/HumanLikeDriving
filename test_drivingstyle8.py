@@ -28,8 +28,10 @@ import json
 def SendCurstate(step):
     step = int(step[0])
     state_vectors = data[exp_index]["state_vectors"]
+    control_vectors = data[exp_index]["control_vectors"]
     d_state = [[state_vectors[step][i][0], state_vectors[step][i][1], state_vectors[step][i][2] * 0.017453293] for  i in range(agent_count)]
-    res = json.dumps({"state" : d_state})
+    d_impatience = [[control_vectors[step][i][1]] for  i in range(agent_count)]
+    res = json.dumps({"state" : d_state, "impatience" : d_impatience})
 
     global current_step
     current_step = step
@@ -53,7 +55,7 @@ def SendLatentOutput(list):
         
     print("Getting Predict result of step " + str(current_step) +" of vehicle " + str(target))
     d_state = [[state_vectors[current_step + j][target][0], state_vectors[current_step + j][target][1], state_vectors[current_step + j][target][2] * 0.017453293] for j in range(0, 90, 15)]
-    l_state = [[] for _ in range(30) ]
+    l_state = []
     state_dic = [cur_history[target][current_step][0] for _ in range(15)]
     route_dic = [cur_history[target][current_step][2] for _ in range(15)]
     action_dic = [0, 0, 0, 0, 0, 1, 1, 1, 1, 1, 2, 2, 2, 2, 2]
@@ -75,9 +77,8 @@ def SendLatentOutput(list):
             y += py
             l.append([x, y, d_state[j][2]])
         l_state.append(l)
-    res = json.dumps({"route" : d_state, "predicted" : l_state})
+    res = json.dumps({"route" : d_state, "predicted" : l_state, "action_prob" : res_action[0].tolist()})
 
-    print(res_action)
     return res
 
 def rotate(posx, posy, yawsin, yawcos):
@@ -110,10 +111,10 @@ exp_index = 2
 tf.disable_eager_execution()
 sess = tf.Session()
 with sess.as_default():
-    learner = DrivingStyleLearner(state_len=state_len, nextstate_len=nextstate_len, agent_for_each_train=agent_for_each_train, global_latent_len=global_latent_len, 
-                                      l2_regularizer_weight=l2_regularizer_weight, global_regularizer_weight=global_regularizer_weight, route_len=route_len, action_len= action_len)
+    learner = DrivingStyleLearner(state_len=state_len, nextstate_len=nextstate_len, global_latent_len=global_latent_len, 
+                                    l2_regularizer_weight=l2_regularizer_weight, global_regularizer_weight=global_regularizer_weight, route_len=route_len, action_len= action_len)
     learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
-    learner_saver.restore(sess, "train_log/DrivingStyle8/log_12-06-2023-23-57-26_20.ckpt")
+    learner_saver.restore(sess, "train_log/DrivingStyle8_fake/log_15-06-2023-16-56-40_10.ckpt")
 
     with open("data/gathered_from_npc_batjeon5/data_" + str(pkl_index) + ".pkl","rb") as fr:
         data = pickle.load(fr)
@@ -122,7 +123,7 @@ with sess.as_default():
     state_vectors = data[exp_index]["state_vectors"]
     control_vectors = data[exp_index]["control_vectors"]
     agent_count = len(state_vectors[0])
-    step_count = 200 #len(state_vectors) - 150
+    step_count = len(state_vectors) - 200
     lane_tracers = [LaneTrace(laneinfo, 10) for _ in range(agent_count)]
     cur_history = [[] for _ in range(agent_count)]
 
@@ -201,8 +202,8 @@ with sess.as_default():
         res_mu, res_sig = learner.get_latent(state_dic, nextstate_dic, route_dic)
         for x in range(agent_count):
             if cur_history[x][step][3] == 0:
-                global_latent_mean[x] += res_mu[x] * (1. / res_sig[x])
-                global_latent_sum[x] += (1. / res_sig[x])
+                global_latent_mean[x] += res_mu[x] * np.exp(-res_sig[x])
+                global_latent_sum[x] += np.exp(-res_sig[x])
                 global_latent_mu[x].append(res_mu[x])
                 global_latent_sig[x].append(res_sig[x])
             else:

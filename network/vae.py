@@ -32,7 +32,7 @@ class VAE:
                                input_tensor=layer_encoder_input, use_dropout=False, name="Enc")
             
             self.mu, self.logsig = tf.split(self.encoder.layer_output, [latent_dim, latent_dim], 1)
-            self.logsig = tf.clip_by_value(self.logsig, -10, 2)
+            self.logsig = tf.clip_by_value(self.logsig, -8, 2)
             self.sig = tf.exp(self.logsig)
 
             self.dist = tf.distributions.Normal(loc=self.mu, scale=self.sig)
@@ -85,7 +85,7 @@ class VAE_Encoder:
                                input_tensor=layer_encoder_input, use_dropout=False, name="Enc")
             
             self.mu, self.logsig = tf.split(self.encoder.layer_output, [latent_dim, latent_dim], 1)
-            self.logsig = tf.clip_by_value(self.logsig, -10, 2)
+            self.logsig = tf.clip_by_value(self.logsig, -8, 2)
             self.sig = tf.exp(self.logsig)
 
             self.dist = tf.distributions.Normal(loc=self.mu, scale=self.sig)
@@ -173,7 +173,7 @@ class VAE_Reverse:
                                input_tensor=layer_encoder_input, use_dropout=False, name="Enc")
             
             self.mu, self.logsig = tf.split(self.encoder.layer_output, [latent_dim, latent_dim], 1)
-            self.logsig = tf.clip_by_value(self.logsig, -10, 2)
+            self.logsig = tf.clip_by_value(self.logsig, -8, 2)
 
             self.dist = tf.distributions.Normal(loc=self.mu, scale=tf.exp(self.logsig))
             self.x = self.dist.sample()

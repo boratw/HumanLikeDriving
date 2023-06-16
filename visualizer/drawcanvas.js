@@ -88,15 +88,17 @@ function DrawCanvas()
 
         }
     }
-    drawctx.strokeStyle = "rgba(255, 0, 0, 0.5)";
     if(latent_output != undefined)
     {
         if(latent_output.length > 1)
         {
             if(latent_idx == null)
             {
-                for(v of latent_output)
+                for(var j = 0; j < latent_output.length; j += 5)
                 {
+                    v = latent_output[j]
+                    prob = Math.sqrt(latent_output_prob[j / 5])
+                    drawctx.strokeStyle = "rgba(255, 0, 0, " + prob + ")";
                     drawctx.beginPath();
                     drawctx.moveTo(v[0][0], v[0][1]);
                     for(var i = 1; i < v.length; ++i)
@@ -147,6 +149,7 @@ function CanvasClick(x, y)
 
     if(clicked != -1)
     {
+        document.getElementById("slider_impatience").value = impatiences[clicked]
         if(clicked in latent_data)
         {
             linechart.data.datasets = latent_data[clicked];

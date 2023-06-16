@@ -52,7 +52,12 @@ function HandleCurrentMap(response)
 {
     data = JSON.parse(response);
     vehicles = data["state"];
+    impatiences = data["impatience"];
 
+    if(clicked != -1)
+    {
+        document.getElementById("slider_impatience").value = impatiences[clicked]
+    }
     DrawCanvas();
 }
 
@@ -84,6 +89,7 @@ function HandleLatentResult(response)
     data = JSON.parse(response);
     real_output = data["route"];
     latent_output = data["predicted"];
+    latent_output_prob = data["action_prob"];
     DrawCanvas();
 }
 function HandleCurrentAgentResult(c, response)
