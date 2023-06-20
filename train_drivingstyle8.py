@@ -35,7 +35,7 @@ l2_regularizer_weight = 0.0001
 global_regularizer_weight = 0.001
 learner_lr_start = 0.0001
 learner_lr_end = 0.00001
-fake_weight = 0.
+fake_weight = 0.01
 
 log_name = datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
 log_file = open("train_log/DrivingStyle8_fake/log_" + log_name + ".txt", "wt")
@@ -125,7 +125,7 @@ def parallel_task(item):
                                     for t in state_vectors[step][i][6]:
                                         if (px * px + py * py) >  ((t[0] - x) * (t[0] - x) + (t[1] - y) * (t[1] - y)):
                                             px, py = rotate(t[0] - x, t[1] - y, yawsin, yawcos)
-                                    history_exp[i].append( [True, np.concatenate([[velocity, (1. if state_vectors[step][i][5] == 0. else 0.), px, py, control_vectors[step][i][1]], other_vcs[:8,:6].flatten()]), nextstate, route, trace_result])
+                                    history_exp[i].append( [True, np.concatenate([[velocity, (1. if state_vectors[step][i][5] == 0. else 0.), px, py], other_vcs[:8,:6].flatten()]), nextstate, route, trace_result])
                                     added = True
             else:
                 torque_added[i] -= 1

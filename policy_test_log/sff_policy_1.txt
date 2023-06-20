@@ -1,0 +1,2 @@
+Iteration	Survive_Time	Score
+1	45	1
