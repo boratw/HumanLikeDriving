@@ -15,18 +15,9 @@ import cv2
 import numpy as np
 import datetime
 
-from network.DrivingStyle8 import DrivingStyleLearner
 import tensorflow.compat.v1 as tf
 from lanetrace import LaneTrace
-
-state_len = 53 
-nextstate_len = 10
-route_len = 20
-action_len = 3
-agent_for_each_train = 8
-global_latent_len = 4
-l2_regularizer_weight = 0.0001
-global_regularizer_weight = 0.001
+from algorithm.routepredictor_DriveStyle import RoutePredictor
 
 def rotate(posx, posy, yawsin, yawcos):
     return posx * yawcos - posy * yawsin, posx * yawsin + posy * yawcos
@@ -44,16 +35,8 @@ class SafetyPotential:
         self.img_topview = None
         self.img_frontview = None
 
-        tf.disable_eager_execution()
-        self.sess = tf.Session()
-        with self.sess.as_default():
-            self.learner = DrivingStyleLearner(state_len=state_len, nextstate_len=nextstate_len, global_latent_len=global_latent_len, 
-                                            l2_regularizer_weight=l2_regularizer_weight, global_regularizer_weight=global_regularizer_weight, route_len=route_len, action_len= action_len)
-            learner_saver = tf.train.Saver(var_list=self.learner.trainable_dict, max_to_keep=0)
-            learner_saver.restore(self.sess, "train_log/DrivingStyle8_fake/log_16-06-2023-18-06-20_150.ckpt")
-
-        self.lane_tracers = [LaneTrace(laneinfo, 10) for _ in range(agent_count)]
         self.agent_count = agent_count
+        self.routepredictor = RoutePredictor(laneinfo, agent_count)
 
     def Assign_Player(self, player):
         self.player = player
@@ -83,66 +66,11 @@ class SafetyPotential:
 
     def Assign_NPCS(self, npcs):
         self.npcs = npcs
-        self.agent_count = len(npcs)
-        self.npc_transforms = []
-        self.npc_velocities = []
-
-    def Get_Predict_Result(self):
-        state_dic = []
-        route_dic = []
-        action_dic = []
-        for i in self.close_npcs:
-            tr = self.npc_transforms[i]
-            v = self.npc_velocities[i]
-            x = tr.location.x
-            y = tr.location.y
-            yawsin = np.sin(tr.rotation.yaw  * -0.017453293)
-            yawcos = np.cos(tr.rotation.yaw  * -0.017453293)
-            other_vcs = []
-            for j in range(self.agent_count):
-                if i != j:
-                    relposx = self.npc_transforms[j].location.x - x
-                    relposy = self.npc_transforms[j].location.y - y
-                    px, py = rotate(relposx, relposy, yawsin, yawcos)
-                    vx, vy = rotate(self.npc_velocities[j].x, self.npc_velocities[j].y, yawsin, yawcos)
-                    relyaw = (self.npc_transforms[j].rotation.yaw - tr.rotation.yaw)   * 0.017453293
-                    other_vcs.append([px, py, np.cos(relyaw), np.sin(relyaw), vx, vy, np.sqrt(relposx * relposx + relposy * relposy)])
-            other_vcs = np.array(sorted(other_vcs, key=lambda s: s[6]))
-            velocity = np.sqrt(v.x ** 2 + v.y ** 2)
-
-            traced, tracec = self.lane_tracers[i].Trace(x, y)
-            route = []
-            if traced == None:
-                for trace in range(action_len):
-                    waypoints = []
-                    for j in range(route_len // 2):
-                        waypoints.extend([0., 0.])
-                    route.append(waypoints)
-            else:
-                for trace in traced:
-                    waypoints = []
-                    for j in trace:
-                        px, py = rotate(j[0] - x, j[1] - y, yawsin, yawcos)
-                        waypoints.extend([px, py])
-                    route.append(waypoints)
-
-            state = np.concatenate([[velocity, 0., px, py, 0.], other_vcs[:8,:6].flatten()])
-            state_dic.append(state)
-            state_dic.append(state)
-            state_dic.append(state)
-            route_dic.append(route)
-            route_dic.append(route)
-            route_dic.append(route)
-            action_dic.extend([0, 1, 2])
-
-        global_latent_dic = [[-1.4275596704333653, 2.429559433754484, 3.353914895291514, 1.9095644036140866] for _ in range(len(state_dic)) ]
-        with self.sess.as_default():
-            self.pred_prob = self.learner.get_decoded_action(state_dic, route_dic, global_latent_dic)
-            self.pred_route = self.learner.get_decoded_route(state_dic, route_dic, action_dic, global_latent_dic)
+        self.routepredictor.Assign_NPCS(npcs)
 
 
-    def get_target_speed(self, target_velocity_in_scenario, route, visualize=False, print_log=False):
-        target_velocity = target_velocity_in_scenario # HO ADDED 20.0
+    def get_target_speed(self, target_velocity_in_scenario, print_log=False, impatience=None):
+        target_velocity = target_velocity_in_scenario / 3.6 # HO ADDED 20.0
         sff_potential = 0.0
         final_sff = None
         actor_distances = [999, 999, 999, 999]
@@ -150,99 +78,123 @@ class SafetyPotential:
         if self.player != None:
             agent_tr = self.player.get_transform()
             agent_v = self.player.get_velocity()
-            M = cv2.getRotationMatrix2D((512, 512), agent_tr.rotation.yaw + 90, 1.0)
+            agent_f = agent_tr.get_forward_vector()
 
-            locx = 512 - int(agent_tr.location.x * 8)
-            locy = 512 - int(agent_tr.location.y * 8)
-            loctr = np.array([locx, locy], np.int32)
-
-            self.close_npcs = []
-            self.npc_transforms = []
-            self.npc_velocities = []
+            close_npcs = []
+            npc_transforms = []
+            npc_velocities = []
+            npc_trafficlights = []
             for npci, npc in enumerate(self.npcs):
                 tr = npc.get_transform()
                 v = npc.get_velocity()
-                self.npc_transforms.append(tr)
-                self.npc_velocities.append(v)
+                npc_transforms.append(tr)
+                npc_velocities.append(v)
                 loc = tr.location
-                front_loc = loc + tr.get_forward_vector() * 5.
                 if np.sqrt( (agent_tr.location.x - loc.x) ** 2 + (agent_tr.location.y - loc.y) ** 2 ) < 256: ##DISTANCE
-                    self.close_npcs.append(npci)
+                    close_npcs.append(npci)
                 actor_distances.append(np.sqrt((agent_tr.location.x - tr.location.x) ** 2 +  (agent_tr.location.y - tr.location.y) ** 2))
 
-            if len(self.close_npcs) > 0:
-                self.Get_Predict_Result()
+                try:
+                    tlight = npc.get_traffic_light()
+                    tlight_state = tlight.get_state()
+                except:
+                    tlight_state = carla.TrafficLightState.Unknown
+                npc_trafficlights.append(tlight_state)
 
-                screen = np.zeros((1024, 1024), np.uint8)
-                line_screen = np.zeros((1024, 1024), np.uint8)
+            if len(close_npcs) > 0:
+                self.routepredictor.Get_Predict_Result(close_npcs, npc_transforms, npc_velocities, agent_tr, agent_v, npc_trafficlights, impatience)
 
-
-                route_line = [[512, 512]]
-                for i, (waypoint, roadoption) in enumerate(route):
-                    route_line.append([locx + int(waypoint.transform.location.x * 8), locy + int(waypoint.transform.location.y * 8)])
-                    if i == 20:
-                        break
-                route_line = np.array([route_line], dtype=np.int32)
-                cv2.polylines(line_screen, route_line, False, (255,), 20)
-
-                #vx_array = -record[step:step+50, :, 3] * sin_array + record[step:step+50, :, 4] * cos_array
-                #vy_array = -record[step:step+50, :, 3] * cos_array - record[step:step+50, :, 4] * sin_array
+                potential = np.zeros((9, 16))
 
 
-                new_screen = np.zeros((4, 1024, 1024), np.uint8)
+                nx = [agent_tr.location.x + agent_f.x * 5.]
+                ny = [agent_tr.location.y + agent_f.y * 5.]
+                for i in range(8):
+                    nx.append(nx[-1] + agent_f.x * 4.05)
+                    ny.append(ny[-1] + agent_f.y * 4.05)
+
                 ni  = 0
-                for npci in self.close_npcs:
-                    yawsin = np.sin(self.npc_transforms[npci].rotation.yaw * 0.017453293)
-                    yawcos = np.cos(self.npc_transforms[npci].rotation.yaw * 0.017453293)
+                for npci in close_npcs:
+                    f = npc_transforms[npci].get_forward_vector()
+                    fx = f.x * 3.0
+                    fy = f.y * 3.0
+                    for i in range(self.routepredictor.output_route_num):
+                        index = self.routepredictor.output_route_num * ni + i
+                        prob = self.routepredictor.pred_prob[index]
+                        for k in range(9):
+
+                            dx = npc_transforms[npci].location.x - nx[k]
+                            dy = npc_transforms[npci].location.y - ny[k]
+                            d = (3. - np.sqrt(dx * dx + dy * dy))
+                            if d > 1.:
+                                d = 1.
+                            if potential[k][0] < (d * prob):
+                                potential[k][0] = d * prob
+
+                            dx += fx
+                            dy += fy
+                            d = (3. - np.sqrt(dx * dx + dy * dy))
+                            if d > 1.:
+                                d = 1.
+                            if potential[k][0] < (d * prob):
+                                potential[k][0] = d * prob
+
+                        for j in range(self.routepredictor.output_route_len):
+                            for k in range(9):
+
+                                dx = self.routepredictor.pred_route[index][j][0] - nx[k]
+                                dy = self.routepredictor.pred_route[index][j][1] - ny[k]
+                                d = (3. - np.sqrt(dx * dx + dy * dy))
+                                if d > 1.:
+                                    d = 1.
+                                if potential[k][j + 1] < (d * prob):
+                                    potential[k][j + 1] = d * prob
+
+                                dx += fx
+                                dy += fy
+                                d = (3. - np.sqrt(dx * dx + dy * dy))
+                                if d > 1.:
+                                    d = 1.
+                                if potential[k][j + 1] < (d * prob):
+                                    potential[k][j + 1] = d * prob
+
+                    ni += 1
+                #print("prob field")
+                #for i in range(9):
+                #    print([potential[i][j] for j in range(8)])
+                
+                v_prob = [0.] * 13
+                v_prob[1] = max([potential[0][0], potential[1][2], potential[2][4], potential[3][6]])
+                v_prob[2] = max([potential[0][0], potential[1][1], potential[2][2], potential[3][3]])
+                v_prob[3] = max([potential[0][0], potential[1][1] * 0.5 + potential[2][1] * 0.5, potential[3][2], potential[4][3] * 0.5 +  potential[5][3] * 0.5])
+                v_prob[4] = max([potential[0][0], potential[1][0], potential[2][1], potential[4][2], potential[6][3]])
+                v_prob[5] = max([potential[0][0], potential[1][0], potential[2][1] * 0.5 + potential[3][1] * 0.5,  potential[5][2], potential[7][3] * 0.5 +  potential[8][3] * 0.5])
+                v_prob[6] = max([potential[0][0], potential[1][0], potential[2][0], potential[3][1] + potential[6][2]])
+                v_prob[7] = max([potential[0][0], potential[1][0], potential[2][0], potential[3][1] * 0.5 + potential[4][1] * 0.5 + potential[7][2]])
+                v_prob[8] = max([potential[0][0], potential[1][0], potential[2][0], potential[3][0], potential[4][1] + potential[8][2]])
+                v_prob[9] = max([potential[0][0], potential[1][0], potential[2][0], potential[3][0], potential[4][1] * 0.5 + potential[5][1] * 0.5])
+                v_prob[10] = max([potential[0][0], potential[1][0], potential[2][0], potential[3][0], potential[4][0], potential[5][1] ])
+                v_prob[11] = max([potential[0][0], potential[1][0], potential[2][0], potential[3][0], potential[4][0], potential[5][1] * 0.5 + potential[6][1] * 0.5])
+                v_prob[12] = max([potential[0][0], potential[1][0], potential[2][0], potential[3][0], potential[4][0], potential[5][0], potential[6][1]])
                 
 
-                    for i in range(3):
-                        line = []
-                        x, y = locx + self.npc_transforms[npci].location.x * 8, locy + self.npc_transforms[npci].location.y * 8
-                        line.append([x, y])
-                        for j in range(5):
-                            px, py = rotate(self.pred_route[3 * ni + i][2 * j], self.pred_route[3 * ni + i][2 * j + 1], yawsin, yawcos)
-                            x += px * 8
-                            y += py * 8
-                            line.append([x, y])
-
-                        color = int(self.pred_prob[3 * ni + i][i] * 256)
-                        cv2.polylines(new_screen[i], np.array([line], dtype=np.int32), False, (color,), 20)
-                    ni += 1
-                for i in range(4):
-                    blurred1 = cv2.GaussianBlur(new_screen[i], (0, 0), 11)
-                    screen = cv2.add(screen, blurred1)
-
-                final_sff = cv2.warpAffine(screen, M, (1024,1024))
-                final_line = cv2.warpAffine(line_screen, M, (1024,1024))
-                final_sff = final_sff[64:576, 256:768]
-                final_line = final_line[64:576, 256:768]
-                #cv2.imshow("final", final)
-                #cv2.imshow("final_line", final_line)
-
-                final = cv2.resize(final_sff[192:448, 128:384], (64, 64), interpolation=cv2.INTER_AREA)
-                final_line = cv2.resize(final_line[192:448, 128:384], (64, 64), interpolation=cv2.INTER_AREA)
-
-                #final2 = final[48:108, 118:138]
-                #cv2.imshow("SafetyPotential", final2)
-                #cv2.waitKey(1)
-                final_mean = np.clip(np.max(final_line.astype(np.float32) * final.astype(np.float32) / 25600., axis=1), 0., 1.)
-                sff_potential = np.mean(final_mean) 
-
-                for i in range(60):
-                    new_velocity = 20. - 0.35 * i
-                    target_velocity = target_velocity * (1 - final_mean[i]) + new_velocity * final_mean[i]
-
+                #print(v_prob)
+                for i in range(12, -1, -1):
+                    dv = i
+                    if target_velocity < dv + 0.5:
+                        dv = dv + 0.5 - 2. * v_prob[i]
+                        if target_velocity > dv:
+                            target_velocity = dv
+                    
                 if target_velocity < 1: # HO ADDED
                     target_velocity = 0.
 
-                if target_velocity < 0.:
-                    target_velocity = 0.
                 
             if self.visualize:
                 visual_output = np.zeros((1024, 2048, 3), np.uint8)
                 actor_speed = np.sqrt(agent_v.x ** 2 + agent_v.y ** 2)
                 if self.img_topview is not None:
+                    '''                    
                     sff_visual = np.zeros((512, 512, 3), np.uint8)
                     line_visual = np.zeros((1024, 1024, 3), np.uint8)
 
@@ -291,6 +243,8 @@ class SafetyPotential:
                     final_visual = cv2.add(final_visual, my_sff_visual)
                     cv2.copyTo(line_visual, mask, final_visual)
                     visual_output[:, :1024] = final_visual
+                    '''
+                    visual_output[:, :1024] = self.img_topview
                 if self.img_frontview is not None:
                     visual_output[:512, 1024:] = self.img_frontview
                 cv2.putText(visual_output, "Current Speed : %dkm/h" % int(actor_speed * 3.6), (1050, 600), cv2.FONT_HERSHEY_SIMPLEX, 2.3, (255, 255, 255), thickness=7)
@@ -307,7 +261,8 @@ class SafetyPotential:
         if target_velocity < 0.:
             target_velocity = 0.
 
-        sff_log = str(round(target_velocity * 3.6)) + "\t" + str(sff_potential) + "\t" + str(actor_distances[0]) + "\t" + str(actor_distances[1])+ "\t" + str(actor_distances[2])+ "\t" + str(actor_distances[3])
+        actor_speed = np.sqrt(agent_v.x ** 2 + agent_v.y ** 2) * 3.6
+        sff_log = str(actor_speed) + "\t" + str(round(target_velocity * 3.6)) + "\t" + "\t".join([str(v_prob[j]) for j in range(13)])
         if print_log:
             return target_velocity, sff_log
         else:

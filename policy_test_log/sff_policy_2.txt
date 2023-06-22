@@ -1,2 +1,0 @@
-Iteration	Survive_Time	Score
-2	139	1

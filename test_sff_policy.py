@@ -29,7 +29,7 @@ client.set_timeout(10.0)
 laneinfo = LaneInfo()
 laneinfo.Load_from_File("laneinfo_Batjeon.pkl")
 
-agent_num = 100
+agent_num = 150
 try:
     world = client.get_world()
 
@@ -43,7 +43,7 @@ try:
     settings.max_substeps = 10
     settings.synchronous_mode = True
     settings.fixed_delta_seconds = 0.05
-    #settings.no_rendering_mode = True
+    settings.no_rendering_mode = True
     world.apply_settings(settings)
 
     blueprints = world.get_blueprint_library().filter('vehicle.*')
@@ -79,12 +79,12 @@ try:
     actor = Actor(world, client, blueprints=blueprints)
     latcontroller = PIDLateralController(K_P =  1.95, K_I = 0.05, K_D = 0.2, dt=0.05)
     loncontroller = PIDLongitudinalController(K_P = 1.0, K_I = 0.05, K_D = 0., dt=0.05)
-    sff = SafetyPotential(laneinfo=laneinfo, visualize=True, record_video=True, agent_count=agent_num)
+    sff = SafetyPotential(laneinfo=laneinfo, visualize=False, record_video=False, agent_count=agent_num)
 
     tf.disable_eager_execution()
     sess = tf.Session()
     with sess.as_default():
-        for exp in range(100):
+        for exp in range(1000):
             distance_to_leading_vehicle = [ np.random.uniform(3.0, 10.0) for i in range(agent_num) ]
             vehicle_lane_offset = [ np.random.uniform(-0.5, 0.5) for i in range(agent_num) ]
             vehicle_speed = [ np.random.uniform(-50.0, 50.0) for i in range(agent_num) ]
@@ -92,8 +92,9 @@ try:
             desired_velocity = [ 11.1111 * (1.0 - vehicle_speed[i] / 100.0)  for i in range(agent_num) ]
 
             impatient_lane_change = [ np.random.uniform(10.0, 50.0) for i in range(agent_num) ]
+            impatiece = [ 0.0 for i in range(agent_num) ]
 
-            log_file = open("policy_test_log/sff_policy_" + str(exp) + ".txt", "wt")
+            log_file = open("policy_test_log/sff_policy_drivestyle_" + str(exp) + ".txt", "wt")
             log_file.write("Iteration\tSurvive_Time\tScore\n")
 
             print("exp " + str(exp) )
@@ -151,7 +152,20 @@ try:
                 if ret["success_dest"]:
                     success += 1
 
-                target_velocity = sff.get_target_speed(20.0, actor.route)
+                for i, a in enumerate(all_vehicle_actors):
+                    v = a.get_velocity()
+                    vel = np.sqrt(v.x * v.x + v.y * v.y)
+                    if vel > 0.1:
+                        impatiece[i] += (desired_velocity[i] - vel - 3.0) * 0.02
+                    else:
+                       impatiece[i] = 0.
+                    if impatiece[i] < 0.:
+                        impatiece[i] = 0.
+                    if impatient_lane_change[i] < impatiece[i]:
+                        traffic_manager.random_left_lanechange_percentage(a, (impatiece[i] - impatient_lane_change[i]) * impatiece[i] / 100.)
+                        traffic_manager.random_right_lanechange_percentage(a, (impatiece[i] - impatient_lane_change[i]) * impatiece[i] / 100.)
+
+                target_velocity, log = sff.get_target_speed(40.0, print_log=True, impatience=impatiece)
 
                 acceleration = loncontroller.run_step(target_velocity, ret["velocity"]) 
                 if acceleration >= 0.0:
@@ -163,9 +177,11 @@ try:
 
 
                 steer = latcontroller.run_step(actor.route[2][0].transform, actor.player.get_transform())
+                log_file.write(str(step + 1) + "\t" + str(target_velocity) + "\t" + log + "\n")
+                print(log)
 
             print(str(exp) + "\t" + str(step + 1) + "\t" + str(success) + "\n")
-            log_file.write(str(exp) + "\t" + str(step + 1) + "\t" + str(success) + "\n")
+            #log_file.write(str(exp) + "\t" + str(step + 1) + "\t" + str(success) + "\n")
             client.apply_batch([carla.command.DestroyActor(x) for x in vehicles_list])
             vehicles_list = []
 finally:
