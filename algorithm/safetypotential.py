@@ -17,7 +17,8 @@ import datetime
 
 import tensorflow.compat.v1 as tf
 from lanetrace import LaneTrace
-from algorithm.routepredictor_DriveStyle import RoutePredictor
+from algorithm.routepredictor_DriveStyle import RoutePredictor_DriveStyle
+from algorithm.routepredictor_Default import RoutePredictor_Default
 
 def rotate(posx, posy, yawsin, yawcos):
     return posx * yawcos - posy * yawsin, posx * yawsin + posy * yawcos
@@ -36,7 +37,10 @@ class SafetyPotential:
         self.img_frontview = None
 
         self.agent_count = agent_count
-        self.routepredictor = RoutePredictor(laneinfo, agent_count)
+        self.routepredictor_default = RoutePredictor_Default(laneinfo, agent_count, True)
+        self.routepredictor_drivestyle = RoutePredictor_DriveStyle(laneinfo, agent_count, True)
+        self.routepredictor = self.routepredictor_drivestyle
+        self.global_distance = 64.
 
     def Assign_Player(self, player):
         self.player = player
@@ -73,7 +77,7 @@ class SafetyPotential:
         target_velocity = target_velocity_in_scenario / 3.6 # HO ADDED 20.0
         sff_potential = 0.0
         final_sff = None
-        actor_distances = [999, 999, 999, 999]
+        v_prob = [0.] * 13
 
         if self.player != None:
             agent_tr = self.player.get_transform()
@@ -84,15 +88,16 @@ class SafetyPotential:
             npc_transforms = []
             npc_velocities = []
             npc_trafficlights = []
+            actor_distances = []
             for npci, npc in enumerate(self.npcs):
                 tr = npc.get_transform()
                 v = npc.get_velocity()
                 npc_transforms.append(tr)
                 npc_velocities.append(v)
                 loc = tr.location
-                if np.sqrt( (agent_tr.location.x - loc.x) ** 2 + (agent_tr.location.y - loc.y) ** 2 ) < 256: ##DISTANCE
+                if np.sqrt( (agent_tr.location.x - loc.x) ** 2 + (agent_tr.location.y - loc.y) ** 2 ) < self.global_distance:
                     close_npcs.append(npci)
-                actor_distances.append(np.sqrt((agent_tr.location.x - tr.location.x) ** 2 +  (agent_tr.location.y - tr.location.y) ** 2))
+                actor_distances.append([npci, (agent_tr.location.x - tr.location.x) ** 2 +  (agent_tr.location.y - tr.location.y) ** 2])
 
                 try:
                     tlight = npc.get_traffic_light()
@@ -100,6 +105,10 @@ class SafetyPotential:
                 except:
                     tlight_state = carla.TrafficLightState.Unknown
                 npc_trafficlights.append(tlight_state)
+
+            actor_distances.sort(key=lambda s: s[1])
+
+            
 
             if len(close_npcs) > 0:
                 self.routepredictor.Get_Predict_Result(close_npcs, npc_transforms, npc_velocities, agent_tr, agent_v, npc_trafficlights, impatience)
@@ -163,7 +172,6 @@ class SafetyPotential:
                 #for i in range(9):
                 #    print([potential[i][j] for j in range(8)])
                 
-                v_prob = [0.] * 13
                 v_prob[1] = max([potential[0][0], potential[1][2], potential[2][4], potential[3][6]])
                 v_prob[2] = max([potential[0][0], potential[1][1], potential[2][2], potential[3][3]])
                 v_prob[3] = max([potential[0][0], potential[1][1] * 0.5 + potential[2][1] * 0.5, potential[3][2], potential[4][3] * 0.5 +  potential[5][3] * 0.5])
@@ -191,14 +199,41 @@ class SafetyPotential:
 
                 
             if self.visualize:
+                M = cv2.getRotationMatrix2D((512, 512), agent_tr.rotation.yaw + 90, 1.0)
+
+                locx = 512 - int(agent_tr.location.x * 8)
+                locy = 512 - int(agent_tr.location.y * 8)
+                loctr = np.array([locx, locy], np.int32)
+
+                screen = np.zeros((1024, 1024), np.uint8)
+                new_screen = np.zeros((3, 1024, 1024), np.uint8)
+                ni = 0
+                for npci in close_npcs:
+                    tr = npc_transforms[npci]
+                    for i in range(self.routepredictor.output_route_num):
+                        index = self.routepredictor.output_route_num * ni + i
+                        line = []
+                        for j in range(self.routepredictor.output_route_len):
+                            x = locx + self.routepredictor.pred_route[index][j][0] * 8
+                            y = locy + self.routepredictor.pred_route[index][j][1] * 8
+                            line.append([x, y])
+                        color = self.routepredictor.pred_prob[index] * 255
+                        cv2.polylines(new_screen[i], np.array([line], dtype=np.int32), False, (color,), 15)
+                    ni += 1
+                for i in range(3):
+                    blurred1 = cv2.GaussianBlur(new_screen[i], (0, 0), 11)
+                    screen = cv2.add(screen, blurred1)
+
+                final_sff = cv2.warpAffine(screen, M, (1024,1024))
+                final_sff = final_sff[64:576, 256:768]
+
                 visual_output = np.zeros((1024, 2048, 3), np.uint8)
                 actor_speed = np.sqrt(agent_v.x ** 2 + agent_v.y ** 2)
                 if self.img_topview is not None:
-                    '''                    
+                                       
                     sff_visual = np.zeros((512, 512, 3), np.uint8)
                     line_visual = np.zeros((1024, 1024, 3), np.uint8)
 
-                    my_sff_visual = np.zeros((1024, 1024, 3), np.uint8)
                     f = agent_tr.get_forward_vector()
 
                     expected_distance = 0
@@ -212,12 +247,6 @@ class SafetyPotential:
                     if expected_distance < 3:
                         expected_distance = 3
 
-                    cv2.line(my_sff_visual, (512 - int(f.x * 12), 512 - int(f.y * 12)), 
-                        (512 + int(f.x * 8 * (1.5 + expected_distance)), 512 + int(f.y * 8 * (1.5 + expected_distance))), (255, 0, 0), 20)
-                    my_sff_visual = cv2.GaussianBlur(my_sff_visual, (0, 0), 11)
-                    my_sff_visual = cv2.warpAffine(my_sff_visual, M, (1024, 1024))
-                    my_sff_visual = my_sff_visual[64:576, 256:768]
-                    my_sff_visual = cv2.resize(my_sff_visual, (1024, 1024), interpolation=cv2.INTER_LINEAR)
 
                     #cv2.polylines(line_visual, route_line, False, (0, 255, 0), 2)
 
@@ -236,15 +265,12 @@ class SafetyPotential:
                     sff_visual = cv2.resize(sff_visual, (1024, 1024), interpolation=cv2.INTER_LINEAR)
                     line_visual = cv2.warpAffine(line_visual, M, (1024, 1024))
                     line_visual = line_visual[64:576, 256:768]
-                    line_visual = cv2.resize(line_visual, (1024, 1024), interpolation=cv2.INTER_LINEAR)
                     mask = np.mean(line_visual, axis=2, dtype=np.uint8)
 
                     final_visual = cv2.addWeighted(self.img_topview, 0.5, sff_visual, 1.0, 0)
-                    final_visual = cv2.add(final_visual, my_sff_visual)
                     cv2.copyTo(line_visual, mask, final_visual)
                     visual_output[:, :1024] = final_visual
-                    '''
-                    visual_output[:, :1024] = self.img_topview
+                    
                 if self.img_frontview is not None:
                     visual_output[:512, 1024:] = self.img_frontview
                 cv2.putText(visual_output, "Current Speed : %dkm/h" % int(actor_speed * 3.6), (1050, 600), cv2.FONT_HERSHEY_SIMPLEX, 2.3, (255, 255, 255), thickness=7)
@@ -255,14 +281,17 @@ class SafetyPotential:
                 if self.record_video:
                     self.video.write(visual_output)
 
-            actor_distances.sort()
             cv2.waitKey(1)
 
         if target_velocity < 0.:
             target_velocity = 0.
 
         actor_speed = np.sqrt(agent_v.x ** 2 + agent_v.y ** 2) * 3.6
-        sff_log = str(actor_speed) + "\t" + str(round(target_velocity * 3.6)) + "\t" + "\t".join([str(v_prob[j]) for j in range(13)])
+        sff_log = str(actor_speed) + "\t" + str(round(target_velocity * 3.6)) + "\t" + "\t".join([str(v_prob[j]) for j in range(13)]) + "\t" + str(self.routepredictor.global_latent_parsed_count) \
+            + "\t" + str(agent_tr.location.x) + "\t" + str(agent_tr.location.y) + "\t" + str(agent_tr.rotation.yaw)
+        for npci in close_npcs[:8]:
+            tr = npc_transforms[npci]
+            sff_log += "\t" + str(tr.location.x) + "\t" + str(tr.location.y) + "\t" + str(tr.rotation.yaw)
         if print_log:
             return target_velocity, sff_log
         else:
@@ -270,6 +299,19 @@ class SafetyPotential:
         #print(target_velocity)
             #cv2.imshow("SafetyPotential2", final2)
             #cv2.waitKey(1)
+
+    def set_global_distance(self, planner, distance):
+        if planner == "Default":
+            self.routepredictor = self.routepredictor_default
+        else:
+            self.routepredictor = self.routepredictor_drivestyle
+            if distance == 0:
+                self.routepredictor.use_global_latent = False
+                self.global_distance = 64.
+            else:
+                self.routepredictor.use_global_latent = True
+                self.global_distance = distance
+
 
     def on_cam_topview_update(self, image):
         if not image:

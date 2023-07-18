@@ -84,106 +84,108 @@ try:
     tf.disable_eager_execution()
     sess = tf.Session()
     with sess.as_default():
-        for exp in range(1000):
-            distance_to_leading_vehicle = [ np.random.uniform(3.0, 10.0) for i in range(agent_num) ]
-            vehicle_lane_offset = [ np.random.uniform(-0.5, 0.5) for i in range(agent_num) ]
-            vehicle_speed = [ np.random.uniform(-50.0, 50.0) for i in range(agent_num) ]
-            ignore_light = [ np.random.uniform(0.0, 1.0) for i in range(agent_num) ]
-            desired_velocity = [ 11.1111 * (1.0 - vehicle_speed[i] / 100.0)  for i in range(agent_num) ]
+        for exp in range(347, 1000):
+            for distance in [("Default", 0), ("DriveStyle", 0), ("DriveStyle", 64), ("DriveStyle", 256)]:
+                sff.set_global_distance(distance[0], distance[1])
 
-            impatient_lane_change = [ np.random.uniform(10.0, 50.0) for i in range(agent_num) ]
-            impatiece = [ 0.0 for i in range(agent_num) ]
+                distance_to_leading_vehicle = [ np.random.uniform(3.0, 10.0) for i in range(agent_num) ]
+                vehicle_lane_offset = [ np.random.uniform(-0.5, 0.5) for i in range(agent_num) ]
+                vehicle_speed = [ np.random.uniform(-50.0, 50.0) for i in range(agent_num) ]
+                ignore_light = [ np.random.uniform(0.0, 1.0) for i in range(agent_num) ]
+                desired_velocity = [ 11.1111 * (1.0 - vehicle_speed[i] / 100.0)  for i in range(agent_num) ]
 
-            log_file = open("policy_test_log/sff_policy_drivestyle_" + str(exp) + ".txt", "wt")
-            log_file.write("Iteration\tSurvive_Time\tScore\n")
+                impatient_lane_change = [ np.random.uniform(10.0, 50.0) for i in range(agent_num) ]
+                impatiece = [ 0.0 for i in range(agent_num) ]
 
-            print("exp " + str(exp) )
-            random.shuffle(spawn_points)
-            vehicles_list = []
-            batch = []
-            actor.reset()
+                log_file = open("policy_test_log/result_0710/sff_policy_" + distance[0] + "_" + str(distance[1]) + "_" + str(exp) + ".txt", "wt")
 
-            for n, transform in enumerate(spawn_points):
-                if n >= agent_num:
-                    break
-                blueprint = random.choice(blueprints)
-                if blueprint.has_attribute('color'):
-                    color = random.choice(blueprint.get_attribute('color').recommended_values)
+                print("exp " + str(exp) )
+                random.shuffle(spawn_points)
+                vehicles_list = []
+                batch = []
+                actor.reset()
 
-                    blueprint.set_attribute('color', color)
-                if blueprint.has_attribute('driver_id'):
-                    driver_id = random.choice(blueprint.get_attribute('driver_id').recommended_values)
-                    blueprint.set_attribute('driver_id', driver_id)
-                blueprint.set_attribute('role_name', 'autopilot')
+                for n, transform in enumerate(spawn_points):
+                    if n >= agent_num:
+                        break
+                    blueprint = random.choice(blueprints)
+                    if blueprint.has_attribute('color'):
+                        color = random.choice(blueprint.get_attribute('color').recommended_values)
 
-                # spawn the cars and set their autopilot and light state all together
-                batch.append(SpawnActor(blueprint, transform)
-                    .then(SetAutopilot(FutureActor, True, traffic_manager.get_port())))
+                        blueprint.set_attribute('color', color)
+                    if blueprint.has_attribute('driver_id'):
+                        driver_id = random.choice(blueprint.get_attribute('driver_id').recommended_values)
+                        blueprint.set_attribute('driver_id', driver_id)
+                    blueprint.set_attribute('role_name', 'autopilot')
 
-            for response in client.apply_batch_sync(batch, True):
-                if response.error:
-                    print(response.error)
-                else:
-                    vehicles_list.append(response.actor_id)
+                    # spawn the cars and set their autopilot and light state all together
+                    batch.append(SpawnActor(blueprint, transform)
+                        .then(SetAutopilot(FutureActor, True, traffic_manager.get_port())))
 
-            all_vehicle_actors = world.get_actors(vehicles_list)
-            
-            sff.Assign_Player(actor.player)
-            sff.Assign_NPCS(all_vehicle_actors)
+                for response in client.apply_batch_sync(batch, True):
+                    if response.error:
+                        print(response.error)
+                    else:
+                        vehicles_list.append(response.actor_id)
 
-            for i, a in enumerate(all_vehicle_actors):
-                traffic_manager.distance_to_leading_vehicle(a, distance_to_leading_vehicle[i] )
-                traffic_manager.vehicle_lane_offset(a, vehicle_lane_offset[i])
-                traffic_manager.vehicle_percentage_speed_difference(a, vehicle_speed[i])
-                traffic_manager.ignore_lights_percentage(a, ignore_light[i])
-
-            world.tick()
-            world.tick()
-            world.tick()
-            world.tick()
-            world.tick()
-            success = 0
-            accel, brake, steer = 1.0, 0.0, 0.0
-            for step in range(2000):
-                ret = actor.step([accel, brake, steer])
-                world.tick()
-                if ret["collision"]:
-                    break
-                if ret["success_dest"]:
-                    success += 1
+                all_vehicle_actors = world.get_actors(vehicles_list)
+                
+                sff.Assign_Player(actor.player)
+                sff.Assign_NPCS(all_vehicle_actors)
 
                 for i, a in enumerate(all_vehicle_actors):
-                    v = a.get_velocity()
-                    vel = np.sqrt(v.x * v.x + v.y * v.y)
-                    if vel > 0.1:
-                        impatiece[i] += (desired_velocity[i] - vel - 3.0) * 0.02
+                    traffic_manager.distance_to_leading_vehicle(a, distance_to_leading_vehicle[i] )
+                    traffic_manager.vehicle_lane_offset(a, vehicle_lane_offset[i])
+                    traffic_manager.vehicle_percentage_speed_difference(a, vehicle_speed[i])
+                    traffic_manager.ignore_lights_percentage(a, ignore_light[i])
+
+                world.tick()
+                world.tick()
+                world.tick()
+                world.tick()
+                world.tick()
+                success = 0
+                accel, brake, steer = 1.0, 0.0, 0.0
+                for step in range(2000):
+                    ret = actor.step([accel, brake, steer])
+                    world.tick()
+                    if ret["collision"]:
+                        break
+                    if ret["success_dest"]:
+                        success += 1
+
+                    for i, a in enumerate(all_vehicle_actors):
+                        v = a.get_velocity()
+                        vel = np.sqrt(v.x * v.x + v.y * v.y)
+                        if vel > 0.1:
+                            impatiece[i] += (desired_velocity[i] - vel - 3.0) * 0.02
+                        else:
+                            impatiece[i] = 0.
+                        if impatiece[i] < 0.:
+                            impatiece[i] = 0.
+                        if impatient_lane_change[i] < impatiece[i]:
+                            traffic_manager.random_left_lanechange_percentage(a, (impatiece[i] - impatient_lane_change[i]) * impatiece[i] / 100.)
+                            traffic_manager.random_right_lanechange_percentage(a, (impatiece[i] - impatient_lane_change[i]) * impatiece[i] / 100.)
+
+                    target_velocity, log = sff.get_target_speed(40.0, print_log=True, impatience=impatiece)
+
+                    acceleration = loncontroller.run_step(target_velocity, ret["velocity"]) 
+                    if acceleration >= 0.0:
+                        accel = min(acceleration, 0.75)
+                        brake = 0.0
                     else:
-                       impatiece[i] = 0.
-                    if impatiece[i] < 0.:
-                        impatiece[i] = 0.
-                    if impatient_lane_change[i] < impatiece[i]:
-                        traffic_manager.random_left_lanechange_percentage(a, (impatiece[i] - impatient_lane_change[i]) * impatiece[i] / 100.)
-                        traffic_manager.random_right_lanechange_percentage(a, (impatiece[i] - impatient_lane_change[i]) * impatiece[i] / 100.)
-
-                target_velocity, log = sff.get_target_speed(40.0, print_log=True, impatience=impatiece)
-
-                acceleration = loncontroller.run_step(target_velocity, ret["velocity"]) 
-                if acceleration >= 0.0:
-                    accel = min(acceleration, 0.75)
-                    brake = 0.0
-                else:
-                    accel = 0.0
-                    brake = min(abs(acceleration), 0.3)
+                        accel = 0.0
+                        brake = min(abs(acceleration), 0.3)
 
 
-                steer = latcontroller.run_step(actor.route[2][0].transform, actor.player.get_transform())
-                log_file.write(str(step + 1) + "\t" + str(target_velocity) + "\t" + log + "\n")
-                print(log)
+                    steer = latcontroller.run_step(actor.route[2][0].transform, actor.player.get_transform())
+                    log_file.write(str(step + 1) + "\t" + str(target_velocity) + "\t" + log + "\n")
+                    print(log)
 
-            print(str(exp) + "\t" + str(step + 1) + "\t" + str(success) + "\n")
-            #log_file.write(str(exp) + "\t" + str(step + 1) + "\t" + str(success) + "\n")
-            client.apply_batch([carla.command.DestroyActor(x) for x in vehicles_list])
-            vehicles_list = []
+                print(str(exp) + "\t" + str(step + 1) + "\t" + str(success) + "\n")
+                #log_file.write(str(exp) + "\t" + str(step + 1) + "\t" + str(success) + "\n")
+                client.apply_batch([carla.command.DestroyActor(x) for x in vehicles_list])
+                vehicles_list = []
 finally:
     sff.destroy()
     actor.destroy()

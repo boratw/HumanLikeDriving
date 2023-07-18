@@ -61,7 +61,7 @@ function AssignEventHandlers()
     canvas.addEventListener("wheel", OnCanvasWheel);
 
     document.getElementById("slider_step").addEventListener("input", OnStepSliderChanged)
-    document.getElementById("textbox_step").addEventListener("change", OnStepTextChanged)
+    document.getElementById("textbox_step").alatent_outputddEventListener("change", OnStepTextChanged)
     document.getElementById("checkbox_blur").addEventListener("change", (event)=>{draw_potential = document.getElementById("checkbox_blur").checked; DrawCanvas();})
     document.getElementById("button_d100").addEventListener("click", (event)=>{document.getElementById("textbox_step").value = (Number(current_step) - 100); OnStepTextChanged();})
     document.getElementById("button_d20").addEventListener("click", (event)=>{document.getElementById("textbox_step").value = (Number(current_step) - 20); OnStepTextChanged();})

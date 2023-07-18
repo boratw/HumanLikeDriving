@@ -16,17 +16,18 @@ import cv2
 import numpy as np
 import datetime
 
-class RoutePredictor:
-    def __init__(self, agent_count=100):
+class RoutePredictor_Default:
+    def __init__(self, laneinfo, agent_count=100, use_global_latent=False):
 
         self.output_route_len = 5
         self.output_route_num = 1
+        self.global_latent_parsed_count = 0
 
     def Assign_NPCS(self, npcs):
         self.npcs = npcs
         self.agent_count = len(npcs)
 
-    def Get_Predict_Result(self, close_npcs, npc_transforms, npc_velocities, actor_transform, actor_velocitiy):
+    def Get_Predict_Result(self, close_npcs, npc_transforms, npc_velocities, actor_transform, actor_velocitiy, npc_traffic_sign, npc_impatience):
         self.pred_prob = []
         self.pred_route = []
         for i in close_npcs:
