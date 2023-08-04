@@ -87,8 +87,8 @@ class DrivingStyleLearner():
             self.encoder_loss = self.encoder_kl_loss * global_regularizer_weight + self.encoder_l2_loss * l2_regularizer_weight \
                 + tf.reduce_mean(self.route_decoder_reconstruction_loss) + tf.reduce_mean(self.action_decoder_reconstruction_loss)
             
-            self.decoder_loss = tf.reduce_mean(tf.reduce_mean(latent_route_decoder_reconstruction_loss, axis=1) - tf.reduce_mean(latent_route_decoder_fake_loss, axis=1) * fake_weight) \
-                + tf.reduce_mean(latent_action_decoder_reconstruction_loss - latent_action_decoder_fake_loss * fake_weight) \
+            self.decoder_loss = tf.reduce_mean(tf.reduce_mean(latent_route_decoder_reconstruction_loss, axis=1) - tf.reduce_mean(tf.clip_by_value(latent_route_decoder_fake_loss, 0.0, 0.1), axis=1) * fake_weight) \
+                + tf.reduce_mean(latent_action_decoder_reconstruction_loss - tf.clip_by_value(latent_action_decoder_fake_loss, 0.0, 0.1) * fake_weight) \
                 + self.latent_route_decoder_l2_loss * l2_regularizer_weight + self.latent_action_decoder_l2_loss * l2_regularizer_weight
                             
 

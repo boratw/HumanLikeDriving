@@ -21,15 +21,16 @@ from lanetrace import LaneTrace
 
 from network.DrivingStyle8 import DrivingStyleLearner
 
-state_len = 53 
+state_len = 52 
 nextstate_len = 10
 route_len = 20
 action_len = 3
-agent_for_each_train = 8
 global_latent_len = 4
 l2_regularizer_weight = 0.0001
 global_regularizer_weight = 0.001
-
+learner_lr_start = 0.0001
+learner_lr_end = 0.00001
+fake_weight = 0.01
 
 def rotate(posx, posy, yawsin, yawcos):
     return posx * yawcos - posy * yawsin, posx * yawsin + posy * yawcos
@@ -43,7 +44,7 @@ class RoutePredictor_DriveStyle:
             self.learner = DrivingStyleLearner(state_len=state_len, nextstate_len=nextstate_len, global_latent_len=global_latent_len, 
                                             l2_regularizer_weight=l2_regularizer_weight, global_regularizer_weight=global_regularizer_weight, route_len=route_len, action_len= action_len)
             learner_saver = tf.train.Saver(var_list=self.learner.trainable_dict, max_to_keep=0)
-            learner_saver.restore(self.sess, "train_log/DrivingStyle8_fake/log_15-06-2023-16-56-40_10.ckpt")
+            learner_saver.restore(self.sess, "train_log/DrivingStyle8_fake/log_24-07-2023-23-20-28_40.ckpt")
 
         self.lane_tracers = [LaneTrace(laneinfo, 10) for _ in range(agent_count)]
         self.output_route_len = 5
@@ -94,6 +95,8 @@ class RoutePredictor_DriveStyle:
                 vx, vy = rotate(actor_velocitiy.x, actor_velocitiy.y, yawsin, yawcos)
                 relyaw = (actor_transform.rotation.yaw - tr.rotation.yaw)   * 0.017453293
                 other_vcs.append([px, py, np.cos(relyaw), np.sin(relyaw), vx, vy, np.sqrt(relposx * relposx + relposy * relposy)])
+                while len(other_vcs) < 8:
+                    other_vcs.append([100., 100., 1., 0., 0., 0., 10000.])
                 other_vcs = np.array(sorted(other_vcs, key=lambda s: s[6]))
 
                 velocity = np.sqrt(v.x ** 2 + v.y ** 2)
@@ -114,7 +117,8 @@ class RoutePredictor_DriveStyle:
                             waypoints.extend([px, py])
                         route.append(waypoints)
 
-                state = np.concatenate([[velocity, (1. if npc_traffic_sign[i] == 0. else 0.), px, py, npc_impatience[i]], other_vcs[:8,:6].flatten()])
+                #state = np.concatenate([[velocity, (1. if npc_traffic_sign[i] == 0. else 0.), px, py, npc_impatience[i]], other_vcs[:8,:6].flatten()])
+                state = np.concatenate([[velocity, (1. if npc_traffic_sign[i] == 0. else 0.), px, py], other_vcs[:8,:6].flatten()])
                 state_dic.append(state)
                 state_dic.append(state)
                 state_dic.append(state)
@@ -153,12 +157,13 @@ class RoutePredictor_DriveStyle:
             yawcos = np.cos(tr.rotation.yaw  * 0.017453293)
             l.append([px, py])
             for j in range(5):
-                dx, dy = rotate(res_route[i][2 * j], res_route[i][2 * j + 1], yawsin, yawcos)
+                dx, dy = rotate(res_route[i][2 * j], res_route[i][2 * j + 1] * 2, yawsin, yawcos)
                 px += dx
                 py += dy
                 l.append([px, py])
             self.pred_route.append(l)
-            self.pred_prob.append(res_prob[i][i % 3])
+            #self.pred_prob.append(res_prob[i][i % 3])
+            self.pred_prob.append(1. - (0.9 - res_prob[i][i % 3] * 0.9) ** 2)
 
         if self.use_global_latent:
             state_dic = []

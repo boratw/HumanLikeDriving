@@ -125,8 +125,8 @@ class SafetyPotential:
                 ni  = 0
                 for npci in close_npcs:
                     f = npc_transforms[npci].get_forward_vector()
-                    fx = f.x * 3.0
-                    fy = f.y * 3.0
+                    fx = f.x * 5.0
+                    fy = f.y * 5.0
                     for i in range(self.routepredictor.output_route_num):
                         index = self.routepredictor.output_route_num * ni + i
                         prob = self.routepredictor.pred_prob[index]
@@ -187,8 +187,8 @@ class SafetyPotential:
                 
 
                 #print(v_prob)
-                for i in range(12, -1, -1):
-                    dv = i
+                for i in range(12, 0, -1):
+                    dv = i * 1.25 - 1.
                     if target_velocity < dv + 0.5:
                         dv = dv + 0.5 - 2. * v_prob[i]
                         if target_velocity > dv:
@@ -289,8 +289,8 @@ class SafetyPotential:
         actor_speed = np.sqrt(agent_v.x ** 2 + agent_v.y ** 2) * 3.6
         sff_log = str(actor_speed) + "\t" + str(round(target_velocity * 3.6)) + "\t" + "\t".join([str(v_prob[j]) for j in range(13)]) + "\t" + str(self.routepredictor.global_latent_parsed_count) \
             + "\t" + str(agent_tr.location.x) + "\t" + str(agent_tr.location.y) + "\t" + str(agent_tr.rotation.yaw)
-        for npci in close_npcs[:8]:
-            tr = npc_transforms[npci]
+        for dist in actor_distances[:8]:
+            tr = npc_transforms[dist[0]]
             sff_log += "\t" + str(tr.location.x) + "\t" + str(tr.location.y) + "\t" + str(tr.rotation.yaw)
         if print_log:
             return target_velocity, sff_log

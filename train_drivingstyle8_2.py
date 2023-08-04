@@ -38,7 +38,7 @@ learner_lr_end = 0.00001
 fake_weight = 0.01
 
 log_name = datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
-log_file = open("train_log/DrivingStyle8_2/log_" + log_name + ".txt", "wt")
+log_file = open("train_log/DrivingStyle8_fake/log_" + log_name + ".txt", "wt")
 
 ReadOption = { "LaneFollow" : 0,
               "Left" : 1,
@@ -155,10 +155,15 @@ with sess.as_default():
         history = []
 
         for epoch in range(1, 10000):
-            pkl_index = random.randrange(20)
-            with open("data/gathered_from_npc_batjeon5/data_" + str(pkl_index) + ".pkl","rb") as fr:
-                data = pickle.load(fr)
-            print("Epoch " + str(epoch) + " Start with data " + str(pkl_index))
+            data = None
+            while data == None:
+                try:
+                    pkl_index = random.randrange(20)
+                    print("Epoch " + str(epoch) + " Start with data " + str(pkl_index))
+                    with open("data/gathered_from_npc_batjeon5/data_" + str(pkl_index) + ".pkl","rb") as fr:
+                        data = pickle.load(fr)
+                except:
+                    data = None
 
             history_data = []
             for result in pool.imap(parallel_task, data):
@@ -209,7 +214,7 @@ with sess.as_default():
                 global_latent_fake_weight = np.zeros((agent_num, ))
                 for x in range(agent_num):
                     global_latent_fake[x][random.randrange(global_latent_len)] = np.random.standard_normal()
-                    global_latent_fake_weight[x] = np.mean((global_latent[x] - global_latent_fake[x]) ** 2)
+                    global_latent_fake_weight[x] = np.mean(np.clip(global_latent[x] - global_latent_fake[x], -1., 1.) ** 2)
 
                 for step in range(max_step):
                     state_dic = []

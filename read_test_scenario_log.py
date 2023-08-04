@@ -8,11 +8,7 @@ def rotate(posx, posy, yawsin, yawcos):
 v_at_step = [0. for _ in range(4001)]
 v_at_step_num = [0 for _ in range(4001)]
 
-map_image = cv2.imread("visualizer/lanemap_batjeon.png")
-M = cv2.getRotationMatrix2D((1500, 1500), 90, 1.0)
-map_image = cv2.warpAffine(map_image, M, (3000, 3000))
-
-log_file = open("policy_test_log/result_0725/zreaded_sff_policy_Default_0.txt", "wt")
+log_file = open("policy_test_log/result_0801/.txt", "wt")
 log_file_v = open("policy_test_log/result_0725/zreaded_sff_policy_Default_0_v.txt", "wt")
 for index in range(250):
     step = 0

@@ -26,7 +26,8 @@ zero_image = np.full((640, 1280), 0., dtype=np.float32)
 one_image = np.full((640, 1280), 1., dtype=np.float32)
 
 class Actor(object):
-    def __init__(self, world, client, action_ratio = 20.0, route_plan_hop_resolution=2.0, forward_target=5.0, target_velocity=4.0, min_waypoint_distance=3.0, blueprints=None):
+    def __init__(self, world, client, action_ratio = 20.0, route_plan_hop_resolution=2.0, forward_target=5.0, target_velocity=4.0, 
+                 min_waypoint_distance=3.0, blueprints=None, spawn_point=None, dest_point=None):
         self.world = world
         self.client = client
         self.forward_target = forward_target
@@ -62,21 +63,26 @@ class Actor(object):
             blueprints = [x for x in blueprints if not x.id.endswith('firetruck')]
             blueprints = [x for x in blueprints if not x.id.endswith('ambulance')]
         self.blueprints = blueprints
+        self.spawn_point = spawn_point
+        self.dest_point = dest_point
 
 
     def reset(self):
         self.destroy()
 
         bp = random.choice(self.blueprints)
+        if self.spawn_point == None:
+            spawn_points = self.map.get_spawn_points()
+            spawn_point_indices = list(range(len(spawn_points)))
+            spawn_point_indices = sorted(spawn_point_indices, key=lambda i : (spawn_points[i].location.x ** 2 + spawn_points[i].location.y ** 2))
+            while self.player is None:
+                spawn_index = random.choice(spawn_point_indices[:32])
+                spawn_point = spawn_points[spawn_index]
+                self.player = self.world.try_spawn_actor(bp, spawn_point)
+            spawn_point_indices.remove(spawn_index)
+        else:
+            self.player = self.world.try_spawn_actor(bp, self.spawn_point)
 
-        spawn_points = self.map.get_spawn_points()
-        spawn_point_indices = list(range(len(spawn_points)))
-        spawn_point_indices = sorted(spawn_point_indices, key=lambda i : (spawn_points[i].location.x ** 2 + spawn_points[i].location.y ** 2))
-        while self.player is None:
-            spawn_index = random.choice(spawn_point_indices[:32])
-            spawn_point = spawn_points[spawn_index]
-            self.player = self.world.try_spawn_actor(bp, spawn_point)
-        spawn_point_indices.remove(spawn_index)
 
         self.collision_sensor = CollisionSensor(self.player)
         #self.camera = Camera(self.player)
@@ -90,8 +96,11 @@ class Actor(object):
         vehicle_transform = self.player.get_transform()
         ego_loc = vehicle_transform.location
         f_vec = vehicle_transform.get_forward_vector()
-        spawn_points = self.map.get_spawn_points() 
-        destination = random.choice(spawn_points).location
+        spawn_points = self.map.get_spawn_points()
+        if self.dest_point == None:
+            destination = random.choice(spawn_points).location
+        else:
+            destination = self.dest_point.location
 
         start_waypoint = self.map.get_waypoint(ego_loc)
         end_waypoint = self.map.get_waypoint(destination)
