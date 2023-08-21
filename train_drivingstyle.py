@@ -12,7 +12,8 @@ except IndexError:
     pass
 
 import tensorflow.compat.v1 as tf
-from laneinfo import LaneInfo, RouteTracer
+from laneinfo import LaneInfo
+from lanetrace import LaneTrace
 from network.DrivingStyle import DrivingStyleLearner
 from datetime import datetime
 import numpy as np
@@ -23,15 +24,17 @@ import carla
 import multiprocessing
 
 laneinfo = LaneInfo()
-laneinfo.Load_from_File("laneinfo_World10Opt.pkl")
+laneinfo.Load_from_File("laneinfo_Batjeon.pkl")
 
 state_len = 59
-agent_for_each_train = 16
+nextstate_len = 10
+route_len = 20
+action_len = 3
 global_latent_len = 4
 
 
-log_name = datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
-log_file = open("train_log/DrivingStyle/log_" + log_name + ".txt", "wt")
+log_name = "train_log/DrivingStyle/log_" + datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
+log_file = open(log_name + ".txt", "wt")
 
 def rotate(posx, posy, yawsin, yawcos):
     return posx * yawcos - posy * yawsin, posx * yawsin + posy * yawcos
@@ -45,86 +48,98 @@ ReadOption = { "LaneFollow" : [1., 0., 0.],
               }
 
 def parallel_task(item):
-    history_exp = [[] for _ in range(100)]
 
     state_vectors = item["state_vectors"]
+    control_vectors = item["control_vectors"]
     agent_count = len(item["state_vectors"][0])
 
-    torque_added = [0 for _ in range(100)]
+    history_exp = [[] for _ in range(agent_count)]
+    torque_added = [0 for _ in range(agent_count)]
     stepstart = random.randrange(50, 60)
-    for step, state_vector in enumerate(state_vectors[stepstart:-60:10]):
+    lane_tracers = [LaneTrace(laneinfo, 10) for _ in range(agent_count)]
+    for step in range(stepstart, len(state_vectors)-150, 5):
         for i in range(agent_count):
+            added = False
             if torque_added[i] == 0:
-                if state_vectors[step+20][i][9] != 0:
-                    torque_added[i] = 25
+                if control_vectors[step+20][i][0] != 0 or control_vectors[step+21][i][0] != 0 or control_vectors[step+22][i][0] != 0 or control_vectors[step+23][i][0] != 0:
+                    torque_added[i] = 5
                 else:
                     other_vcs = []
-                    x = state_vector[i][0]
-                    y = state_vector[i][1]
-                    yawsin = np.sin(state_vector[i][2]  * -0.017453293)
-                    yawcos = np.cos(state_vector[i][2]  * -0.017453293)
-                    for j in range(agent_count):
-                        if i != j:
-                            relposx = state_vector[j][0] - x
-                            relposy = state_vector[j][1] - y
-                            px, py = rotate(relposx, relposy, yawsin, yawcos)
-                            vx, vy = rotate(state_vector[j][3], state_vector[j][4], yawsin, yawcos)
-                            relyaw = (state_vector[j][2] - state_vector[i][2])   * 0.017453293
-                            if relyaw < -np.pi:
-                                relyaw += 2 * np.pi
-                            elif relyaw > np.pi:
-                                relyaw -= 2 * np.pi
-                            other_vcs.append([relposx, relposy, relyaw, vx, vy, np.sqrt(relposx * relposx + relposy * relposy)])
-                    other_vcs = np.array(sorted(other_vcs, key=lambda s: s[5]))
-                    velocity = np.sqrt(state_vector[i][3] ** 2 + state_vector[i][4] ** 2)
+                    x = state_vectors[step][i][0]
+                    y = state_vectors[step][i][1]
+                    relposx = state_vectors[step+10][i][0] - x
+                    relposy = state_vectors[step+10][i][1] - y
+                    if (relposx * relposx + relposy * relposy) > 0.01 or random.random() < 0.1:
+                        traced, tracec = lane_tracers[i].Trace(x, y)
+                        if traced != None:
 
-                    relposx = state_vectors[step+20][i][0] - x
-                    relposy = state_vectors[step+20][i][1] - y
-                    px, py = rotate(relposx, relposy, yawsin, yawcos)
-                    route = [px, py]
-                    
-                    waypoints = []
-                    option = [0., 0., 0.]
-                    px, py = 0., 0.
-                    prevx = 0.
-                    prevy = 0.
-                    k = step
-                    for j in range(3):
-                        while k < len(state_vectors):
-                            if len(state_vectors[k][i][8]) > 0 :
-                                if state_vectors[k][i][8][0][1] != prevx or state_vectors[k][i][8][0][2] != prevy:
-                                    relposx = state_vectors[k][i][8][0][1] - x
-                                    relposy = state_vectors[k][i][8][0][2] - y
-                                    px, py = rotate(relposx, relposy, yawsin, yawcos)
-                                    if state_vectors[k][i][8][0][0] in ReadOption:
-                                        option = ReadOption[state_vectors[k][i][8][0][0]]
-                                    else:
-                                        print("Unknown RoadOption " + state_vectors[k][i][8][0][0])
-                                    prevx = state_vectors[k][i][8][0][1]
-                                    prevy = state_vectors[k][i][8][0][2]
-                                    break
-                            k += 1
-                        waypoints.extend([option[0], option[1], option[2], px, py])
-                        
-                    px, py = 9999., 9999.
-                    for t in state_vector[i][6]:
-                        if np.sqrt(px * px + py * py) >  np.sqrt((t[0] - x) * (t[0] - x) + (t[1] - y) * (t[1] - y)):
-                            px, py = rotate(t[0] - x, t[1] - y, yawsin, yawcos)
-                    if px == 9999.:
-                        px = 0.
-                        py = 0.
-                    history_exp[i].append( [np.concatenate([[velocity, state_vector[i][5], px, py], waypoints, other_vcs[:8,:5].flatten()]), route])
+                            trace_result = 0
+                            if len(state_vectors[step][i][8]) >= 1:
+                                mindist = 99999
+                                for j in range(len(traced)):
+                                    if tracec[j]:
+                                        dist = (traced[j][1][0] - state_vectors[step][i][8][0][1]) ** 2 + (traced[j][1][1] - state_vectors[step][i][8][0][2]) ** 2
+                                        if dist < mindist:
+                                            trace_result = j
+                                            mindist = dist
+
+                            if trace_result != 0 or random.random() < 0.2:
+                                yawsin = np.sin(state_vectors[step][i][2]  * -0.017453293)
+                                yawcos = np.cos(state_vectors[step][i][2]  * -0.017453293)
+                                nextstate = []
+                                for j in range(0, 75, 15) :
+                                    relposx = state_vectors[step + j + 15][i][0] - state_vectors[step + j][i][0]
+                                    relposy = state_vectors[step + j + 15][i][1] - state_vectors[step + j][i][1]
+                                    if (relposx * relposx + relposy * relposy) < 1000.:
+                                        px, py = rotate(relposx, relposy, yawsin, yawcos)
+                                        nextstate.extend([px, py])
+                                if len(nextstate) == 10:
+
+                                    for j in range(agent_count):
+                                        if i != j:
+                                            relposx = state_vectors[step][j][0] - x
+                                            relposy = state_vectors[step][j][1] - y
+                                            px, py = rotate(relposx, relposy, yawsin, yawcos)
+                                            vx, vy = rotate(state_vectors[step][j][3], state_vectors[step][j][4], yawsin, yawcos)
+                                            relyaw = (state_vectors[step][j][2] - state_vectors[step][i][2])   * 0.017453293
+                                            other_vcs.append([px, py, np.cos(relyaw), np.sin(relyaw), vx, vy, np.sqrt(relposx * relposx + relposy * relposy)])
+                                    other_vcs = np.array(sorted(other_vcs, key=lambda s: s[6]))
+                                    velocity = np.sqrt(state_vectors[step][i][3] ** 2 + state_vectors[step][i][4] ** 2)
+
+
+                                    route = []
+                                    for trace in traced:
+                                        waypoints = []
+                                        for j in trace:
+                                            px, py = rotate(j[0] - x, j[1] - y, yawsin, yawcos)
+                                            waypoints.extend([px, py])
+                                        route.append(waypoints)
+
+                                    
+                                        
+                                    px, py = 50., 0.
+                                    for t in state_vectors[step][i][6]:
+                                        if (px * px + py * py) >  ((t[0] - x) * (t[0] - x) + (t[1] - y) * (t[1] - y)):
+                                            px, py = rotate(t[0] - x, t[1] - y, yawsin, yawcos)
+                                    history_exp[i].append( [True, np.concatenate([[velocity, (1. if state_vectors[step][i][5] == 0. else 0.), px, py, control_vectors[step][i][1]], other_vcs[:8,:6].flatten()]), nextstate, route, trace_result])
+                                    added = True
             else:
                 torque_added[i] -= 1
-    return history_exp
+            if added == False:
+                history_exp[i].append( [False])
+    history = []
+    for exp in history_exp:
+        if len(exp) > 200:
+            history.append(exp)
+    return history
 
 tf.disable_eager_execution()
 sess = tf.Session()
 with sess.as_default():
-    with multiprocessing.Pool(processes=50) as pool:
-        learner = DrivingStyleLearner(state_len=state_len, agent_for_each_train=agent_for_each_train, global_latent_len=global_latent_len)
+    with multiprocessing.Pool(processes=20) as pool:
+        learner = DrivingStyleLearner(state_len=state_len, nextstate_len=nextstate_len, global_latent_len=global_latent_len, route_len=route_len,
+                                      action_len= action_len)
         learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
-        teacher_saver = tf.train.Saver(var_list=learner.teacher.trainable_dict, max_to_keep=0)
         sess.run(tf.global_variables_initializer())
         learner.network_initialize()
         log_file.write("Epoch" + learner.log_caption() + "\n")
@@ -132,8 +147,8 @@ with sess.as_default():
         history = []
 
         for epoch in range(1, 10000):
-            pkl_index = random.randrange(51)
-            with open("data/gathered_from_npc_batjeon2/data_" + str(pkl_index) + ".pkl","rb") as fr:
+            pkl_index = random.randrange(26)
+            with open("data/gathered_from_npc_batjeon6/data_" + str(pkl_index) + ".pkl","rb") as fr:
                 data = pickle.load(fr)
             print("Epoch " + str(epoch) + " Start with data " + str(pkl_index))
 
@@ -143,7 +158,8 @@ with sess.as_default():
             history.append(history_data)
 
             print("Current History Length : " + str(len(history)))
-            for iter in range(len(history) * 32):
+
+            for iter in range(len(history) * 8):
 
                 data_index = random.randrange(len(history))
                 exp_index = random.randrange(len(history[data_index]))
@@ -152,15 +168,16 @@ with sess.as_default():
                 cur_history = history[data_index][exp_index]
                 agent_num = len(cur_history)
                 
-                agent_dic = random.choices(list(range(agent_num)), k=agent_for_each_train)
-                step_dic = [ random.choices(list(range(len(cur_history[x]))), k = 128) for x in agent_dic ]
+                agent_dic = random.choices(list(range(agent_num)), k=16)
 
-                state_dic = []
-                nextstate_dic = []
-                for x in range(16):
-                    state_dic.extend([cur_history[agent_dic[x]][step][0] for step in step_dic[x]])
-                    nextstate_dic.extend([cur_history[agent_dic[x]][step][1] for step in step_dic[x]])
-                learner.optimize(state_dic, nextstate_dic)
+                for x in range(agent_dic):
+                    c = cur_history[x]
+                    step_dic = random.shuffle(list(range(len(c))))
+                    state_dic = [c[step][1] for step in step_dic if c[step][0]]
+                    nextstate_dic = [c[step][2] for step in step_dic if c[step][0]]
+                    route_dic = [c[step][3] for step in step_dic if c[step][0]]
+                    if len(state_dic) > 0:
+                        learner.optimize(state_dic, nextstate_dic, route_dic)
         
                 
             if len(history) > 32:
@@ -172,6 +189,6 @@ with sess.as_default():
             learner.network_update()
 
 
-            if epoch % 50 == 0:
-                learner_saver.save(sess, "train_log/DrivingStyle/log_" + log_name + "_" + str(epoch) + ".ckpt")
+            if epoch % 20 == 0:
+                learner_saver.save(sess, log_name + "_" + str(epoch) + ".ckpt")
 

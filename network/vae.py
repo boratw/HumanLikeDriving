@@ -58,7 +58,7 @@ class VAE:
 class VAE_Encoder:
     def __init__(self, input_dim, latent_dim, hidden_dims, hidden_nonlns=tf.nn.relu,
                     additional_dim=None, additional_tensor=None, reuse=False, input_tensor=None, 
-                    name=None):
+                    use_dropout=False, input_dropout= None, name=None):
         if name == None:
             name = "VAE"
         else:
@@ -82,7 +82,8 @@ class VAE_Encoder:
                 encoder_input_dim = input_dim
         
             self.encoder = MLP(encoder_input_dim, latent_dim * 2, hidden_dims, hidden_nonlns, reuse=reuse,
-                               input_tensor=layer_encoder_input, use_dropout=False, name="Enc")
+                               input_tensor=layer_encoder_input, use_dropout=use_dropout,
+                               input_dropout=input_dropout,name="Enc")
             
             self.mu, self.logsig = tf.split(self.encoder.layer_output, [latent_dim, latent_dim], 1)
             self.logsig = tf.clip_by_value(self.logsig, -8, 2)
