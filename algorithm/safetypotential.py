@@ -73,7 +73,7 @@ class SafetyPotential:
         self.routepredictor.Assign_NPCS(npcs)
 
 
-    def get_target_speed(self, target_velocity_in_scenario, print_log=False, impatience=None):
+    def get_target_speed(self, target_velocity_in_scenario, steer, print_log=False, impatience=None):
         target_velocity = target_velocity_in_scenario / 3.6 # HO ADDED 20.0
         sff_potential = 0.0
         final_sff = None
@@ -83,7 +83,9 @@ class SafetyPotential:
             agent_tr = self.player.get_transform()
             agent_v = self.player.get_velocity()
             agent_f = agent_tr.get_forward_vector()
+            agent_r = agent_tr.get_right_vector()
 
+            agent_f += agent_r * steer
             close_npcs = []
             npc_transforms = []
             npc_velocities = []

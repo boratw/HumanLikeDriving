@@ -21,7 +21,7 @@ from lanetrace import LaneTrace
 
 from network.DrivingStyle8 import DrivingStyleLearner
 
-state_len = 52 
+state_len = 53
 nextstate_len = 10
 route_len = 20
 action_len = 3
@@ -44,7 +44,7 @@ class RoutePredictor_DriveStyle:
             self.learner = DrivingStyleLearner(state_len=state_len, nextstate_len=nextstate_len, global_latent_len=global_latent_len, 
                                             l2_regularizer_weight=l2_regularizer_weight, global_regularizer_weight=global_regularizer_weight, route_len=route_len, action_len= action_len)
             learner_saver = tf.train.Saver(var_list=self.learner.trainable_dict, max_to_keep=0)
-            learner_saver.restore(self.sess, "train_log/DrivingStyle8_fake/log_24-07-2023-23-20-28_40.ckpt")
+            learner_saver.restore(self.sess, "train_log/DrivingStyle8_3/log_14-08-2023-13-41-51_240.ckpt")
 
         self.lane_tracers = [LaneTrace(laneinfo, 10) for _ in range(agent_count)]
         self.output_route_len = 5
@@ -117,8 +117,8 @@ class RoutePredictor_DriveStyle:
                             waypoints.extend([px, py])
                         route.append(waypoints)
 
-                #state = np.concatenate([[velocity, (1. if npc_traffic_sign[i] == 0. else 0.), px, py, npc_impatience[i]], other_vcs[:8,:6].flatten()])
-                state = np.concatenate([[velocity, (1. if npc_traffic_sign[i] == 0. else 0.), px, py], other_vcs[:8,:6].flatten()])
+                state = np.concatenate([[velocity, (1. if npc_traffic_sign[i] == 0. else 0.), px, py, npc_impatience[i]], other_vcs[:8,:6].flatten()])
+                #state = np.concatenate([[velocity, (1. if npc_traffic_sign[i] == 0. else 0.), px, py], other_vcs[:8,:6].flatten()])
                 state_dic.append(state)
                 state_dic.append(state)
                 state_dic.append(state)

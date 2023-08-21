@@ -12,17 +12,17 @@ map_image = cv2.imread("visualizer/lanemap_batjeon.png")
 M = cv2.getRotationMatrix2D((1500, 1500), 90, 1.0)
 map_image = cv2.warpAffine(map_image, M, (3000, 3000))
 
-log_file = open("policy_test_log/result_0725/zreaded_sff_policy_Default_0.txt", "wt")
-log_file_v = open("policy_test_log/result_0725/zreaded_sff_policy_Default_0_v.txt", "wt")
-for index in range(250):
+log_file = open("policy_test_log/result_0815/zreaded_sff_policy_DriveStyle_0.txt", "wt")
+log_file_v = open("policy_test_log/result_0815/zreaded_sff_policy_DriveStyle_0_v.txt", "wt")
+for index in range(101):
     step = 0
     v_sum = 0
     readed_sum = 0
     screen = np.zeros((512, 512, 3), np.uint8)
     agentpos = []
     npcpos = []
-    with open("policy_test_log/result_0725/sff_policy_Default_0_" + str(index) + ".txt", "rt") as f:
-        with open("policy_test_log/result_0725/sff_policy_Default_0_" + str(index) + "_v.txt", "wt") as fw:
+    with open("policy_test_log/result_0815/sff_policy_DriveStyle_0_" + str(index) + ".txt", "rt") as f:
+        with open("policy_test_log/result_0815/sff_policy_DriveStyle_0_" + str(index) + "_v.txt", "wt") as fw:
             lines = f.readlines()
             length = len(lines)
             print(length)
@@ -65,7 +65,7 @@ for index in range(250):
                     for npc in npcpos[i]:
                         cv2.circle(screen, (int((npc[0] - agentpos[-1][0]) * 5.44) + 256, int((npc[1] - agentpos[-1][1]) * 5.44) + 256), 4, (0, 0, c), -1)
 
-                cv2.imwrite("policy_test_log/result_0725/sff_policy_Default_0_" + str(index) + ".png", screen)
+                cv2.imwrite("policy_test_log/result_0815/sff_policy_DriveStyle_0_" + str(index) + ".png", screen)
 
 
             

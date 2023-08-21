@@ -75,7 +75,7 @@ try:
     settings.max_substeps = 10
     settings.synchronous_mode = True
     settings.fixed_delta_seconds = 0.05
-    #settings.no_rendering_mode = True
+    settings.no_rendering_mode = True
     world.apply_settings(settings)
 
     blueprints = world.get_blueprint_library().filter('vehicle.*')
@@ -118,12 +118,14 @@ try:
         distance_to_leading_vehicle = [ np.random.uniform(3.0, 10.0) for i in range(agent_num) ]
         vehicle_lane_offset = [ np.random.uniform(-0.5, 0.5) for i in range(agent_num) ]
         vehicle_speed = [ np.random.uniform(-50.0, 50.0) for i in range(agent_num) ]
-        ignore_light = [ np.random.uniform(0.0, 1.0) for i in range(agent_num) ]
+        ignore_light = [ np.clip(np.random.normal(0., 1.), 0., 5.0) for i in range(agent_num) ]
+        steering_ratio = [ np.clip(np.random.normal(1., 0.15), 0.7, 1.3) for i in range(agent_num) ]
+
         desired_velocity = [ 11.1111 * (1.0 - vehicle_speed[i] / 100.0)  for i in range(agent_num) ]
 
         impatient_lane_change = [ np.random.uniform(10.0, 50.0) for i in range(agent_num) ]
         
-        for iteration in range(20):
+        for iteration in range(50):
             print("exp " + str(exp) + " : " + str(iteration))
             random.shuffle(spawn_points)
             vehicles_list = []
@@ -172,15 +174,11 @@ try:
             impatiece = [ 0.0 for i in range(agent_num) ]
 
             world.tick()
-            for step in range(5000):
+            for step in range(2000):
                 state_vector = []
                 control_vector = []
                 vehiclecontrols = []
                 for i, actor in enumerate(all_vehicle_actors):
-
-                    #distance_to_leading_vehicle[i] = distance_to_leading_vehicle[i] * 0.99 + (1.5 - criminality[i]) * 5. * 0.01 + random.uniform(-0.025, 0.025)
-                    #vehicle_lane_offset[i] = vehicle_lane_offset[i] * 0.99 + lane_shift[i] * 0.75 * 0.01 + random.uniform(-0.0025, 0.0125)
-                    #vehicle_speed[i] = vehicle_speed[i] * 0.99 + (0.75 - adventurousness[i]) * 100. * 0.01 + random.uniform(-0.25, 0.25)
 
 
                     tr = actor.get_transform()
@@ -221,16 +219,20 @@ try:
                         throttle_add[i] = random.random() * 0.5
                         brake_add[i] = random.random() * 0.5
 
+                    vc = actor.get_control()
                     if torque_added[i] >= 1:
-                        vc = actor.get_control()
                         vc.steer = np.clip(vc.steer + steer_add[i], -1.0, 1.0)
                         vc.throttle = np.clip(vc.throttle + throttle_add[i], 0.0, 1.0)
                         vc.brake = np.clip(vc.brake + brake_add[i], 0.0, 1.0)
-                        vehiclecontrols.append(carla.command.ApplyVehicleControl(actor, vc))
                         torque_added[i] -= 1
+                    else:
+                        vc.steer = np.clip(vc.steer * steering_ratio[i], -1.0, 1.0)
+
+
+                    vehiclecontrols.append(carla.command.ApplyVehicleControl(actor, vc))
 
                     state = [tr.location.x, tr.location.y, tr.rotation.yaw, v.x, v.y, tlight_state, tlight_pos, fail, traj_pos]
-                    control = [torque_added[i], impatiece[i]]
+                    control = [torque_added[i], impatiece[i], vc.steer, vc.throttle, vc.brake]
 
                     state_vector.append(state)
                     control_vector.append(control)
@@ -243,11 +245,11 @@ try:
 
 
             save_obj = {}
-            save_obj["params"] = [ [distance_to_leading_vehicle[i], vehicle_lane_offset[i], vehicle_speed[i], impatient_lane_change[i]] for i in range(agent_num) ]
+            save_obj["params"] = [ [distance_to_leading_vehicle[i], vehicle_lane_offset[i], vehicle_speed[i], impatient_lane_change[i], steering_ratio[i]] for i in range(agent_num) ]
             save_obj["state_vectors"] = state_vectors
             save_obj["control_vectors"] = control_vectors
             save_objs.append(save_obj)
-        with open("data/gathered_from_npc_batjeon5/data_" + str(exp) + ".pkl","wb") as fw:
+        with open("data/gathered_from_npc_batjeon6/data_" + str(exp) + ".pkl","wb") as fw:
             pickle.dump(save_objs, fw)
 
 

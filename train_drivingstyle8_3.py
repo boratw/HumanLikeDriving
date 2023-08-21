@@ -125,7 +125,7 @@ def parallel_task(item):
                                     for t in state_vectors[step][i][6]:
                                         if (px * px + py * py) >  ((t[0] - x) * (t[0] - x) + (t[1] - y) * (t[1] - y)):
                                             px, py = rotate(t[0] - x, t[1] - y, yawsin, yawcos)
-                                    history_exp[i].append( [True, np.concatenate([[velocity, (1. if state_vectors[step][i][5] == 0. else 0.), px, py], other_vcs[:8,:6].flatten()]), nextstate, route, trace_result])
+                                    history_exp[i].append( [True, np.concatenate([[velocity, (1. if state_vectors[step][i][5] == 0. else 0.), px, py, control_vectors[step][i][1]], other_vcs[:8,:6].flatten()]), nextstate, route, trace_result])
                                     added = True
             else:
                 torque_added[i] -= 1
@@ -158,7 +158,7 @@ with sess.as_default():
             data = None
             while data == None:
                 try:
-                    pkl_index = random.randrange(25)
+                    pkl_index = random.randrange(26)
                     print("Epoch " + str(epoch) + " Start with data " + str(pkl_index))
                     with open("data/gathered_from_npc_batjeon6/data_" + str(pkl_index) + ".pkl","rb") as fr:
                         data = pickle.load(fr)
@@ -246,5 +246,5 @@ with sess.as_default():
 
 
             if epoch % 10 == 0:
-                learner_saver.save(sess, "train_log/DrivingStyle8_3/log_" + log_name + "_" + str(epoch) + ".ckpt")
+                learner_saver.save(sess, "train_log/DrivingStyle8_fake/log_" + log_name + "_" + str(epoch) + ".ckpt")
 

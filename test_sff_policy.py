@@ -93,6 +93,8 @@ try:
                 vehicle_speed = [ np.random.uniform(-50.0, 50.0) for i in range(agent_num) ]
                 ignore_light = [ np.random.uniform(0.0, 1.0) for i in range(agent_num) ]
                 desired_velocity = [ 11.1111 * (1.0 - vehicle_speed[i] / 100.0)  for i in range(agent_num) ]
+                steering_ratio = [ np.clip(np.random.normal(1., 0.15), 0.7, 1.3) for i in range(agent_num) ]
+
 
                 impatient_lane_change = [ np.random.uniform(10.0, 50.0) for i in range(agent_num) ]
                 impatiece = [ 0.0 for i in range(agent_num) ]
@@ -154,6 +156,9 @@ try:
                     if ret["success_dest"]:
                         success += 1
 
+
+
+                    vehiclecontrols =[]
                     for i, a in enumerate(all_vehicle_actors):
                         v = a.get_velocity()
                         vel = np.sqrt(v.x * v.x + v.y * v.y)
@@ -167,12 +172,16 @@ try:
                             traffic_manager.random_left_lanechange_percentage(a, (impatiece[i] - impatient_lane_change[i]) * impatiece[i] / 100.)
                             traffic_manager.random_right_lanechange_percentage(a, (impatiece[i] - impatient_lane_change[i]) * impatiece[i] / 100.)
 
+                        vc = a.get_control()
+                        vc.steer = np.clip(vc.steer * steering_ratio[i], -1.0, 1.0)
+                        vehiclecontrols.append(carla.command.ApplyVehicleControl(a, vc))
+
                     tl = actor.player.get_traffic_light_state()
                     print(tl)
                     if tl == carla.TrafficLightState.Red:
-                        target_velocity, log = sff.get_target_speed(0.0, print_log=True, impatience=impatiece)
+                        target_velocity, log = sff.get_target_speed(0.0, steer, print_log=True, impatience=impatiece)
                     else:
-                        target_velocity, log = sff.get_target_speed(40.0, print_log=True, impatience=impatiece)
+                        target_velocity, log = sff.get_target_speed(40.0, steer, print_log=True, impatience=impatiece)
 
                     acceleration = loncontroller.run_step(target_velocity, ret["velocity"]) 
                     if acceleration >= 0.0:
@@ -185,6 +194,9 @@ try:
 
                     steer = latcontroller.run_step(actor.route[2][0].transform, actor.player.get_transform())
                     log_file.write(str(step + 1) + "\t" + str(target_velocity) + "\t" + log + "\n")
+
+
+                    client.apply_batch(vehiclecontrols)
                     print(log)
 
                 print(str(exp) + "\t" + str(step + 1) + "\t" + str(success) + "\n")
