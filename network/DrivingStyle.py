@@ -26,6 +26,7 @@ class DrivingStyleLearner():
         else:
             self.name = "DrivingStyleLearner" + name
         self.global_latent_len = global_latent_len
+        self.nextstate_len = nextstate_len
         self.route_len = route_len
         
         with tf.variable_scope(self.name, reuse=reuse):
@@ -37,7 +38,7 @@ class DrivingStyleLearner():
             layer_input_route_flatten = tf.reshape(self.layer_input_route, [-1, action_len * route_len])
 
             self.locally_encoder_input = tf.concat([self.layer_input_state, layer_input_route_flatten], axis=1)
-            self.locally_encoder_h = fully_connect("le1", self.layer_input_state, state_len + action_len * route_len, 256)
+            self.locally_encoder_h = fully_connect("le1", self.locally_encoder_input, state_len + action_len * route_len, 256)
             self.locally_encoder_h = tf.nn.leaky_relu(self.locally_encoder_h, alpha=0.001)
             self.locally_encoded_state = fully_connect("le2", self.locally_encoder_h, 256, locally_encoded_state_length)
             self.locally_encoded_state = tf.nn.tanh(self.locally_encoded_state)
@@ -46,7 +47,7 @@ class DrivingStyleLearner():
             self.locally_encoder_error = self.locally_encoder_output - self.layer_input_nextstate
             self.global_encoder_input = tf.concat([self.locally_encoded_state, self.locally_encoder_error], axis=1)
             self.global_encoder = VAE_Encoder(locally_encoded_state_length + nextstate_len, global_latent_len, [128, 128], hidden_nonlns = tf.nn.leaky_relu, 
-                        input_tensor=self.global_encoder_input, name="GlobalEncoder", reuse=True, use_dropout=True, input_dropout=self.layer_input_dropout )
+                        input_tensor=self.global_encoder_input, name="GlobalEncoder", use_dropout=True, input_dropout=self.layer_input_dropout )
             
             self.global_decoder_input = tf.concat([self.locally_encoded_state, self.global_encoder.layer_output], axis=1)
             self.global_decoder = MLP(global_latent_len + locally_encoded_state_length, nextstate_len, [128, 128], hidden_nonlns = tf.nn.leaky_relu, 
@@ -54,16 +55,16 @@ class DrivingStyleLearner():
             
             shuffled_global_latent = tf.tile(self.global_encoder.layer_output, [decoder_shuffle_num, 1])
             locally_encoded_state_batch = tf.tile(self.locally_encoded_state, [decoder_shuffle_num, 1])
-            locally_encoder_error_batch = tf.tile(self.global_encoder.layer_output, [decoder_shuffle_num, 1])
+            locally_encoder_error_batch = tf.tile(self.locally_encoder_error, [decoder_shuffle_num, 1])
             tf.random.shuffle(shuffled_global_latent)
             self.shuffled_global_decoder_input = tf.concat([locally_encoded_state_batch, tf.stop_gradient(shuffled_global_latent)], axis=1)
             self.shuffled_global_decoder = MLP(global_latent_len + locally_encoded_state_length, nextstate_len, [128, 128], hidden_nonlns = tf.nn.leaky_relu, 
-                        input_tensor=self.global_decoder_input, name="GlobalDecoder", use_dropout=True, input_dropout=self.layer_input_dropout, reuse=True  )
+                        input_tensor=self.shuffled_global_decoder_input, name="GlobalDecoder", use_dropout=True, input_dropout=self.layer_input_dropout, reuse=True  )
 
 
             self.locally_encoder_loss = tf.reduce_mean((self.locally_encoder_output - self.layer_input_nextstate) ** 2, axis=0)
-            self.encoder_reconstruction_loss = tf.reduce_mean((self.global_decoder.layer_output - self.locally_encoder_error), axis=0)
-            self.shuffle_encoder_reconstruction_loss = tf.reduce_mean((self.shuffled_global_decoder.layer_output - locally_encoder_error_batch), axis=0)
+            self.encoder_reconstruction_loss = tf.reduce_mean((self.global_decoder.layer_output - self.locally_encoder_error) ** 2, axis=0)
+            self.shuffle_encoder_reconstruction_loss = tf.reduce_mean((self.shuffled_global_decoder.layer_output - locally_encoder_error_batch) ** 2, axis=0)
 
             self.global_encoder_loss = tf.reduce_mean(self.encoder_reconstruction_loss + self.shuffle_encoder_reconstruction_loss * shuffle_loss_ratio) \
                 + self.global_encoder.regularization_loss * global_regularizer_weight
@@ -96,7 +97,8 @@ class DrivingStyleLearner():
         self.log_num = 0
             
     def optimize(self, input_state, input_nextstate, input_route):
-        input_list = {self.layer_input_state : input_state, self.layer_input_nextstate: input_nextstate, self.layer_input_route : input_route}
+        input_list = {self.layer_input_state : input_state, self.layer_input_nextstate: input_nextstate, self.layer_input_route : input_route,
+                      self.layer_input_dropout : 0.9}
         sess = tf.get_default_session()
         _, l1 = sess.run([self.locally_encoder_train_action, self.locally_encoder_loss] ,input_list)
         _, l2, l3, l4 = sess.run([self.global_encoder_train_action, self.encoder_reconstruction_loss, 

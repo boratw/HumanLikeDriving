@@ -14,7 +14,7 @@ except IndexError:
 import tensorflow.compat.v1 as tf
 from laneinfo import LaneInfo
 from lanetrace import LaneTrace
-from network.DrivingStyle import DrivingStyleLearner
+from network.DrivingStyle_bayesian_default import DrivingStyleLearner
 from datetime import datetime
 import numpy as np
 import pickle
@@ -26,14 +26,14 @@ import multiprocessing
 laneinfo = LaneInfo()
 laneinfo.Load_from_File("laneinfo_Batjeon.pkl")
 
-state_len = 59
+state_len = 53
 nextstate_len = 10
 route_len = 20
 action_len = 3
 global_latent_len = 4
 
 
-log_name = "train_log/DrivingStyle/log_" + datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
+log_name = "train_log/DrivingStyle_Bayesian_Default/log_" + datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
 log_file = open(log_name + ".txt", "wt")
 
 def rotate(posx, posy, yawsin, yawcos):
@@ -83,46 +83,45 @@ def parallel_task(item):
                                             trace_result = j
                                             mindist = dist
 
-                            if trace_result != 0 or random.random() < 0.2:
-                                yawsin = np.sin(state_vectors[step][i][2]  * -0.017453293)
-                                yawcos = np.cos(state_vectors[step][i][2]  * -0.017453293)
-                                nextstate = []
-                                for j in range(0, 75, 15) :
-                                    relposx = state_vectors[step + j + 15][i][0] - state_vectors[step + j][i][0]
-                                    relposy = state_vectors[step + j + 15][i][1] - state_vectors[step + j][i][1]
-                                    if (relposx * relposx + relposy * relposy) < 1000.:
+                            yawsin = np.sin(state_vectors[step][i][2]  * -0.017453293)
+                            yawcos = np.cos(state_vectors[step][i][2]  * -0.017453293)
+                            nextstate = []
+                            for j in range(0, 75, 15) :
+                                relposx = state_vectors[step + j + 15][i][0] - state_vectors[step + j][i][0]
+                                relposy = state_vectors[step + j + 15][i][1] - state_vectors[step + j][i][1]
+                                if (relposx * relposx + relposy * relposy) < 1000.:
+                                    px, py = rotate(relposx, relposy, yawsin, yawcos)
+                                    nextstate.extend([px, py])
+                            if len(nextstate) == 10:
+
+                                for j in range(agent_count):
+                                    if i != j:
+                                        relposx = state_vectors[step][j][0] - x
+                                        relposy = state_vectors[step][j][1] - y
                                         px, py = rotate(relposx, relposy, yawsin, yawcos)
-                                        nextstate.extend([px, py])
-                                if len(nextstate) == 10:
-
-                                    for j in range(agent_count):
-                                        if i != j:
-                                            relposx = state_vectors[step][j][0] - x
-                                            relposy = state_vectors[step][j][1] - y
-                                            px, py = rotate(relposx, relposy, yawsin, yawcos)
-                                            vx, vy = rotate(state_vectors[step][j][3], state_vectors[step][j][4], yawsin, yawcos)
-                                            relyaw = (state_vectors[step][j][2] - state_vectors[step][i][2])   * 0.017453293
-                                            other_vcs.append([px, py, np.cos(relyaw), np.sin(relyaw), vx, vy, np.sqrt(relposx * relposx + relposy * relposy)])
-                                    other_vcs = np.array(sorted(other_vcs, key=lambda s: s[6]))
-                                    velocity = np.sqrt(state_vectors[step][i][3] ** 2 + state_vectors[step][i][4] ** 2)
+                                        vx, vy = rotate(state_vectors[step][j][3], state_vectors[step][j][4], yawsin, yawcos)
+                                        relyaw = (state_vectors[step][j][2] - state_vectors[step][i][2])   * 0.017453293
+                                        other_vcs.append([px, py, np.cos(relyaw), np.sin(relyaw), vx, vy, np.sqrt(relposx * relposx + relposy * relposy)])
+                                other_vcs = np.array(sorted(other_vcs, key=lambda s: s[6]))
+                                velocity = np.sqrt(state_vectors[step][i][3] ** 2 + state_vectors[step][i][4] ** 2)
 
 
-                                    route = []
-                                    for trace in traced:
-                                        waypoints = []
-                                        for j in trace:
-                                            px, py = rotate(j[0] - x, j[1] - y, yawsin, yawcos)
-                                            waypoints.extend([px, py])
-                                        route.append(waypoints)
+                                route = []
+                                for trace in traced:
+                                    waypoints = []
+                                    for j in trace:
+                                        px, py = rotate(j[0] - x, j[1] - y, yawsin, yawcos)
+                                        waypoints.extend([px, py])
+                                    route.append(waypoints)
 
+                                
                                     
-                                        
-                                    px, py = 50., 0.
-                                    for t in state_vectors[step][i][6]:
-                                        if (px * px + py * py) >  ((t[0] - x) * (t[0] - x) + (t[1] - y) * (t[1] - y)):
-                                            px, py = rotate(t[0] - x, t[1] - y, yawsin, yawcos)
-                                    history_exp[i].append( [True, np.concatenate([[velocity, (1. if state_vectors[step][i][5] == 0. else 0.), px, py, control_vectors[step][i][1]], other_vcs[:8,:6].flatten()]), nextstate, route, trace_result])
-                                    added = True
+                                px, py = 50., 0.
+                                for t in state_vectors[step][i][6]:
+                                    if (px * px + py * py) >  ((t[0] - x) * (t[0] - x) + (t[1] - y) * (t[1] - y)):
+                                        px, py = rotate(t[0] - x, t[1] - y, yawsin, yawcos)
+                                history_exp[i].append( [True, np.concatenate([[velocity, (1. if state_vectors[step][i][5] == 0. else 0.), px, py, control_vectors[step][i][1]], other_vcs[:8,:6].flatten()]), nextstate, route, trace_result])
+                                added = True
             else:
                 torque_added[i] -= 1
             if added == False:
@@ -137,8 +136,7 @@ tf.disable_eager_execution()
 sess = tf.Session()
 with sess.as_default():
     with multiprocessing.Pool(processes=20) as pool:
-        learner = DrivingStyleLearner(state_len=state_len, nextstate_len=nextstate_len, global_latent_len=global_latent_len, route_len=route_len,
-                                      action_len= action_len)
+        learner = DrivingStyleLearner(state_len=state_len, nextstate_len=nextstate_len, route_len=route_len, action_len= action_len)
         learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
         sess.run(tf.global_variables_initializer())
         learner.network_initialize()
@@ -170,9 +168,10 @@ with sess.as_default():
                 
                 agent_dic = random.choices(list(range(agent_num)), k=16)
 
-                for x in range(agent_dic):
+                for x in agent_dic:
                     c = cur_history[x]
-                    step_dic = random.shuffle(list(range(len(c))))
+                    step_dic = list(range(len(c)))
+                    random.shuffle(step_dic)
                     state_dic = [c[step][1] for step in step_dic if c[step][0]]
                     nextstate_dic = [c[step][2] for step in step_dic if c[step][0]]
                     route_dic = [c[step][3] for step in step_dic if c[step][0]]
