@@ -32,12 +32,12 @@ class DrivingStyleLearner():
                                   output_nonln = None, name="output")
             
             self.error =  tf.reduce_mean((self.output.layer_output - self.layer_input_nextstate) ** 2, axis=0)
-            self.reg_loss = self.h1.regularization_loss + self.h2.regularization_loss
+            self.reg_loss = self.h1.regularization_loss + self.output.regularization_loss
 
             self.loss = tf.reduce_mean(self.error) + self.reg_loss * regularizer_weight
 
             self.optimizer = tf.train.AdamOptimizer(lr)
-            self.train_action = self.locally_encoder_optimizer.minimize(loss = self.loss)
+            self.train_action = self.optimizer.minimize(loss = self.loss)
 
             self.trainable_params = tf.trainable_variables(scope=tf.get_variable_scope().name)
             def nameremover(x, n):

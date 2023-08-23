@@ -135,7 +135,7 @@ def parallel_task(item):
 tf.disable_eager_execution()
 sess = tf.Session()
 with sess.as_default():
-    with multiprocessing.Pool(processes=20) as pool:
+    with multiprocessing.Pool(20) as pool:
         learner = DrivingStyleLearner(state_len=state_len, nextstate_len=nextstate_len, route_len=route_len, action_len= action_len)
         learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
         sess.run(tf.global_variables_initializer())
@@ -151,7 +151,7 @@ with sess.as_default():
             print("Epoch " + str(epoch) + " Start with data " + str(pkl_index))
 
             history_data = []
-            for result in pool.imap(parallel_task, data):
+            for result in pool.imap_unordered(parallel_task, data):
                 history_data.append(result)
             history.append(history_data)
 

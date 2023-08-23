@@ -25,7 +25,7 @@ class Bayesian_FC:
 
             out = tf.matmul(input_tensor, w) + b
             if input_dropout != None:
-                out = tf.nn.dropout(out, rate=self.layer_dropout)
+                out = tf.nn.dropout(out, rate=input_dropout)
 
             if output_nonln == tf.nn.leaky_relu:
                 out = tf.nn.leaky_relu(out, alpha=0.001)
