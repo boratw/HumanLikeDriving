@@ -23,7 +23,7 @@ class Bayesian_FC:
             w = mu_w + tf.exp(tf.clip_by_value(logsig_w, clip_min, clip_max)) * noise_w
             b = mu_b + tf.exp(tf.clip_by_value(logsig_b, clip_min, clip_max)) * noise_b
 
-            out = tf.matmul(input_tensor, w) + b
+            out = (tf.matmul(input_tensor, w) + b) / input_dim 
             if input_dropout != None:
                 out = tf.nn.dropout(out, rate=input_dropout)
 

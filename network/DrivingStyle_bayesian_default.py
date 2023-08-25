@@ -28,13 +28,15 @@ class DrivingStyleLearner():
             self.input = tf.concat([self.layer_input_state, layer_input_route_flatten], axis=1)
             self.h1 = Bayesian_FC(self.input, state_len + action_len * route_len, 256, input_dropout = self.layer_input_dropout, 
                                   output_nonln = tf.nn.leaky_relu, name="h1")
-            self.output = Bayesian_FC(self.h1.layer_output, 256, nextstate_len, input_dropout = self.layer_input_dropout, 
+            self.h2 = Bayesian_FC(self.h1.layer_output, 256, 128, input_dropout = self.layer_input_dropout, 
+                                  output_nonln = tf.nn.leaky_relu, name="h2")
+            self.output = Bayesian_FC(self.h2.layer_output, 128, nextstate_len, input_dropout = None, 
                                   output_nonln = None, name="output")
             
             self.error =  tf.reduce_mean((self.output.layer_output - self.layer_input_nextstate) ** 2, axis=0)
-            self.reg_loss = self.h1.regularization_loss + self.output.regularization_loss
+            self.regularization_loss = self.h1.regularization_loss + self.h2.regularization_loss + self.output.regularization_loss
 
-            self.loss = tf.reduce_mean(self.error) + self.reg_loss * regularizer_weight
+            self.loss = tf.reduce_mean(self.error) + self.regularization_loss * regularizer_weight
 
             self.optimizer = tf.train.AdamOptimizer(lr)
             self.train_action = self.optimizer.minimize(loss = self.loss)
@@ -61,7 +63,7 @@ class DrivingStyleLearner():
         input_list = {self.layer_input_state : input_state, self.layer_input_nextstate: input_nextstate, self.layer_input_route : input_route,
                       self.layer_input_dropout : 0.1}
         sess = tf.get_default_session()
-        _, l1, l2 = sess.run([self.train_action, self.error,  self.reg_loss],input_list)
+        _, l1, l2 = sess.run([self.train_action, self.error,  self.regularization_loss],input_list)
         
         self.rec_loss += l1
         self.reg_loss += l2
