@@ -8,7 +8,7 @@ from network.bayesian_mlp import Bayesian_FC
 
 class DrivingStyleLearner():
     def __init__(self, name=None, reuse=False, state_len = 59, nextstate_len = 2, route_len = 10, action_len=3, regularizer_weight= 0.001,
-                 lr = 0.001):
+                 lr = 0.001, not_action_lr = 0.05):
 
         if name == None:
             self.name = "DrivingStyleLearner"
@@ -59,14 +59,17 @@ class DrivingStyleLearner():
             for i in range(action_len):
                 train_route_vars.extend(self.h2[i].trainable_params)
                 train_route_vars.extend(self.l_route[i].trainable_params)
-            self.train_route = self.optimizer.minimize(loss = self.minimum_route_error + self.route_reg_loss * regularizer_weight,
+            self.train_route = self.optimizer.minimize(loss = tf.reduce_mean(self.minimum_route_error) + tf.reduce_mean(self.route_error) * not_action_lr
+                                                       + self.route_reg_loss * regularizer_weight,
                                                        var_list=train_route_vars )
-            action_possibility = tf.nn.softmax(tf.stop_gradient(self.action_normalizer) / self.route_error, axis=1)
-            self.action_error = - action_possibility * self.output_action
+            action_possibility = self.action_normalizer / self.route_error
+            action_possibility_softmax = action_possibility / tf.reduce_sum(action_possibility, axis=1, keepdims=True)
+            self.action_error = - tf.stop_gradient(action_possibility_softmax) * self.output_action
             self.train_action = self.optimizer.minimize(loss = self.action_error + self.action_reg_loss * regularizer_weight,
-                                                       var_list=[*self.h1.trainable_params, *self.l_action.trainable_params] )             
-            self.train_normalizer = self.optimizer.minimize(loss = (self.action_normalizer - tf.stop_gradient(self.output_action)) ** 2,
-                                                       var_list=[self.action_normalizer] )
+                                                       var_list=[*self.h1.trainable_params, *self.l_action.trainable_params] )     
+
+            normalizer_loss = tf.gather(( tf.stop_gradient(self.route_error) - self.action_normalizer) ** 2, self.minimum_loss_action, axis=1, batch_dims=1)
+            self.train_normalizer = self.optimizer.minimize(loss = normalizer_loss, var_list=[self.action_normalizer] )
 
             self.trainable_params = tf.trainable_variables(scope=tf.get_variable_scope().name)
             def nameremover(x, n):
@@ -129,4 +132,4 @@ class DrivingStyleLearner():
             + "\n\tMaximumAction      : " + str(self.log_action / log_num) \
             + "\n\tActionRegLoss      : " + str(self.log_a_reg / log_num) \
             + "\n\tRouteRegLoss       : " + str(self.log_r_reg / log_num) \
-            + "\n\tAverageAction      : " + " ".join([str(self.log_a_norm[i] / log_num)[:8] for i in range(self.action_len)]) )
+            + "\n\tAverageAction      : " + " ".join([str(self.log_a_norm[i] / log_num) for i in range(self.action_len)]) )

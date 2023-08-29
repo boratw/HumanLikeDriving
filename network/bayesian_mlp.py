@@ -34,5 +34,7 @@ class Bayesian_FC:
 
             
             self.layer_output = out
+            self.layer_mean = (tf.matmul(input_tensor, mu_w) + mu_b) / input_dim 
+            self.layer_var = (tf.matmul(input_tensor ** 2, logsig_w ** 2) + logsig_b ** 2) / input_dim 
             self.regularization_loss = tf.reduce_mean(mu_w ** 2 + logsig_w ** 2) + tf.reduce_mean(mu_b ** 2 + logsig_b ** 2)
             self.trainable_params = tf.trainable_variables(scope=tf.get_variable_scope().name)

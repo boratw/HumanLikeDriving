@@ -14,7 +14,7 @@ except IndexError:
 import tensorflow.compat.v1 as tf
 from laneinfo import LaneInfo
 from lanetrace import LaneTrace
-from network.DrivingStyle2_bayesian_default import DrivingStyleLearner
+from network.DrivingStyle2_bayesian_latent import DrivingStyleLearner
 from datetime import datetime
 import numpy as np
 import pickle
@@ -27,13 +27,13 @@ laneinfo = LaneInfo()
 laneinfo.Load_from_File("laneinfo_Batjeon.pkl")
 
 state_len = 53
-nextstate_len = 10
+nextstate_len = 6
 route_len = 20
 action_len = 3
 global_latent_len = 4
 
 
-log_name = "train_log/DrivingStyle2_Bayesian_Default/log_" + datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
+log_name = "train_log/DrivingStyle2_Bayesian_Latent/log_" + datetime.now().strftime("%d-%m-%Y-%H-%M-%S")
 log_file = open(log_name + ".txt", "wt")
 
 def rotate(posx, posy, yawsin, yawcos):
@@ -86,13 +86,13 @@ def parallel_task(item):
                             yawsin = np.sin(state_vectors[step][i][2]  * -0.017453293)
                             yawcos = np.cos(state_vectors[step][i][2]  * -0.017453293)
                             nextstate = []
-                            for j in range(0, 75, 15) :
+                            for j in range(0, 45, 15) :
                                 relposx = state_vectors[step + j + 15][i][0] - state_vectors[step + j][i][0]
                                 relposy = state_vectors[step + j + 15][i][1] - state_vectors[step + j][i][1]
                                 if (relposx * relposx + relposy * relposy) < 1000.:
                                     px, py = rotate(relposx, relposy, yawsin, yawcos)
                                     nextstate.extend([px, py])
-                            if len(nextstate) == 10:
+                            if len(nextstate) == 6:
 
                                 for j in range(agent_count):
                                     if i != j:
@@ -166,18 +166,24 @@ with sess.as_default():
                 cur_history = history[data_index][exp_index]
                 agent_num = len(cur_history)
                 
-                agent_dic = random.choices(list(range(agent_num)), k=16)
+                #agent_dic = random.choices(list(range(agent_num)), k=16)
+                agent_dic = np.random.randint(0, agent_num, (16, 4))
 
-                for x in agent_dic:
-                    c = cur_history[x]
-                    step_dic = list(range(len(c)))
-                    random.shuffle(step_dic)
-                    state_dic = [c[step][1] for step in step_dic if c[step][0]]
-                    nextstate_dic = [c[step][2] for step in step_dic if c[step][0]]
-                    route_dic = [c[step][3] for step in step_dic if c[step][0]]
+
+                for agent_dic_it in agent_dic:
+                    state_dic = []
+                    nextstate_dic = []
+                    route_dic = []
+                    for x in agent_dic_it:
+                        c = cur_history[x]
+                        step_dic = list(range(len(c)))
+                        random.shuffle(step_dic)
+                        state_dic.extend([c[step][1] for step in step_dic if c[step][0]])
+                        nextstate_dic.extend([c[step][2] for step in step_dic if c[step][0]])
+                        route_dic.extend([c[step][3] for step in step_dic if c[step][0]])
                     if len(state_dic) > 0:
                         learner.optimize(state_dic, nextstate_dic, route_dic)
-        
+    
                 
             if len(history) > 32:
                 history = history[1:]
