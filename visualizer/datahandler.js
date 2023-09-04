@@ -19,24 +19,26 @@ function RequestCurrentMap()
     
     xmlHttp2.open("GET", "/v/expinfo/", true);
     xmlHttp2.send();
+    if(clicked != -1)
+        RequestOutput();
 }
-function RequestLatentResult()
+function RequestOutput()
 {
     latentoutput = undefined;
     var xmlHttp = new XMLHttpRequest();
     xmlHttp.onreadystatechange = function() {
         if(this.status == 200 && this.readyState == this.DONE) {
-            HandleLatentResult(xmlHttp.responseText);            
+            HandleOutput(xmlHttp.responseText);            
         }
     };
-    url = "/v/latentout/" + clicked + "/";
+    url = "/v/predicted/" + clicked + "/";
     for(var i = 0; i < 8; ++i)
         url += document.getElementById("value_l" + i).innerHTML + "/"
     xmlHttp.open("GET", url, true);
     xmlHttp.send();
 }
 function RequestCurrentAgent(target)
-{
+{/*
     var xmlHttp = new XMLHttpRequest();
     xmlHttp.onreadystatechange = function() {
         if(this.status == 200 && this.readyState == this.DONE) {
@@ -45,19 +47,21 @@ function RequestCurrentAgent(target)
     };
     url = "/v/agentinfo/" + target + "/";
     xmlHttp.open("GET", url, true);
-    xmlHttp.send();
+    xmlHttp.send();*/
 }
 
 function HandleCurrentMap(response)
 {
     data = JSON.parse(response);
     vehicles = data["state"];
+    /*
     impatiences = data["impatience"];
 
     if(clicked != -1)
     {
         document.getElementById("slider_impatience").value = impatiences[clicked]
     }
+    */
     DrawCanvas();
 }
 
@@ -84,7 +88,7 @@ function HandleCurrentExp(response)
     
 
 }
-function HandleLatentResult(response)
+function HandleOutput(response)
 {
     data = JSON.parse(response);
     real_output = data["route"];

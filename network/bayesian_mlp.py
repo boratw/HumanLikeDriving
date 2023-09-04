@@ -20,10 +20,13 @@ class Bayesian_FC:
             noise_w = tf.random.normal([input_dim, output_dim])
             noise_b = tf.random.normal([output_dim])
 
-            w = mu_w + tf.exp(tf.clip_by_value(logsig_w, clip_min, clip_max)) * noise_w
-            b = mu_b + tf.exp(tf.clip_by_value(logsig_b, clip_min, clip_max)) * noise_b
+            sig_w = tf.exp(tf.clip_by_value(logsig_w, clip_min, clip_max))
+            sig_b = tf.exp(tf.clip_by_value(logsig_b, clip_min, clip_max))
 
-            out = (tf.matmul(input_tensor, w) + b) / input_dim 
+            w = mu_w + sig_w * noise_w
+            b = mu_b + sig_b * noise_b
+
+            out = (tf.matmul(input_tensor, w) + b) / (input_dim ** 0.5)
             if input_dropout != None:
                 out = tf.nn.dropout(out, rate=input_dropout)
 
@@ -34,7 +37,7 @@ class Bayesian_FC:
 
             
             self.layer_output = out
-            self.layer_mean = (tf.matmul(input_tensor, mu_w) + mu_b) / input_dim 
-            self.layer_var = (tf.matmul(input_tensor ** 2, logsig_w ** 2) + logsig_b ** 2) / input_dim 
+            self.layer_mean = (tf.matmul(input_tensor, mu_w) + mu_b) / (input_dim ** 0.5) 
+            self.layer_var = tf.log(tf.matmul(input_tensor ** 2, sig_w ** 2) + sig_b ** 2) / (input_dim ** 0.5)
             self.regularization_loss = tf.reduce_mean(mu_w ** 2 + logsig_w ** 2) + tf.reduce_mean(mu_b ** 2 + logsig_b ** 2)
             self.trainable_params = tf.trainable_variables(scope=tf.get_variable_scope().name)

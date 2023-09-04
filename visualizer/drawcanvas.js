@@ -58,8 +58,6 @@ function DrawCanvas()
     drawctx.transform(carla_scale, 0, 0, carla_scale, carla_x, carla_y)
     drawctx.rotate(carla_rotate)
     drawctx.fillStyle = "rgb(0, 255, 0)";
-    drawctx.strokeStyle = "rgba(0, 255, 0, 0.5)";
-    drawctx.lineWidth = 0.5;
 
     for(var k = 0; k < vehicles.length; ++k)
     {
@@ -74,6 +72,50 @@ function DrawCanvas()
 
     }
 
+    if(latent_output != undefined && clicked != -1)
+    {
+        if(latent_output.length > 1)
+        {
+            for(var action = 0; action < latent_output.length; action++)
+            {
+                v = vehicles[clicked];
+                l = latent_output[action]
+                prob = latent_output_prob[action]
+                drawctx.strokeStyle = "rgba(255, 0, 0, " + prob + ")";
+                drawctx.save()
+                drawctx.transform(1, 0, 0, 1, v[0], v[1])
+                drawctx.rotate(v[2])
+
+                drawctx.beginPath();
+                for(var i = 1; i < v.length; ++i)
+                {
+                    drawctx.lineTo(l[i][0], l[i][1]);
+                }
+                drawctx.stroke();
+
+                drawctx.beginPath();
+                drawctx.strokeStyle = "rgba(255, 0, 0, " + prob + ")";
+                for(var i = 1; i < v.length; ++i)
+                {
+                    drawctx.ellipse(l[i][0], l[i][1], l[i][2], l[i][3], 0, 0, 2 * Math.PI);
+                }
+                drawctx.stroke();
+
+                drawctx.beginPath();
+                drawctx.strokeStyle = "rgba(0, 0, 255, " + prob + ")";
+                for(var i = 1; i < v.length; ++i)
+                {
+                    drawctx.ellipse(l[i][0], l[i][1], l[i][4], l[i][5], 0, 0, 2 * Math.PI);
+                }
+                drawctx.stroke();
+
+                drawctx.restore()
+            }
+        }
+    }
+
+    drawctx.strokeStyle = "rgba(0, 255, 0)";
+    drawctx.lineWidth = 0.5;
     if(real_output != undefined)
     {
         if(real_output.length > 1)
@@ -88,42 +130,6 @@ function DrawCanvas()
 
         }
     }
-    if(latent_output != undefined)
-    {
-        if(latent_output.length > 1)
-        {
-            if(latent_idx == null)
-            {
-                for(var j = 0; j < latent_output.length; j += 5)
-                {
-                    v = latent_output[j]
-                    prob = Math.sqrt(latent_output_prob[j / 5])
-                    drawctx.strokeStyle = "rgba(255, 0, 0, " + prob + ")";
-                    drawctx.beginPath();
-                    drawctx.moveTo(v[0][0], v[0][1]);
-                    for(var i = 1; i < v.length; ++i)
-                    {
-                        drawctx.lineTo(v[i][0], v[i][1]);
-                    }
-                    drawctx.stroke();
-    
-                }
-            }
-            else
-            {
-                v = latent_output[latent_idx]
-                drawctx.beginPath();
-                drawctx.moveTo(v[0][0], v[0][1]);
-                for(var i = 1; i < v.length; ++i)
-                {
-                    drawctx.lineTo(v[i][0], v[i][1]);
-                }
-                drawctx.stroke();
-
-            }
-        }
-    }
-
     visctx.drawImage(drawctx.canvas, 0, 0);
 }
 
@@ -149,7 +155,7 @@ function CanvasClick(x, y)
 
     if(clicked != -1)
     {
-        document.getElementById("slider_impatience").value = impatiences[clicked]
+        //document.getElementById("slider_impatience").value = impatiences[clicked]
         if(clicked in latent_data)
         {
             linechart.data.datasets = latent_data[clicked];

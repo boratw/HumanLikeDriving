@@ -40,6 +40,8 @@ class DrivingStyleLearner():
             self.l_route = [Bayesian_FC(self.h2[i].layer_output, 128, nextstate_len, input_dropout = None, 
                                   output_nonln = None, name="l_route" + str(i)) for i in range(action_len)]
             self.output_route = tf.stack([self.l_route[i].layer_output for i in range(action_len)], axis=1)
+            self.output_route_mean = tf.stack([self.l_route[i].layer_mean for i in range(action_len)], axis=1)
+            self.output_route_var = tf.stack([self.l_route[i].layer_var for i in range(action_len)], axis=1)
 
             self.route_error = tf.reduce_mean((self.output_route - tf.reshape(self.layer_input_nextstate, [-1, 1, nextstate_len])) ** 2, axis=2)
             self.minimum_loss_action = tf.math.argmin(self.route_error, axis=1)
@@ -110,6 +112,14 @@ class DrivingStyleLearner():
         self.log_a_norm += l5
         self.log_num += 1
        
+    def get_output(self, input_state, input_route):
+        input_list = {self.layer_input_state : input_state,  self.layer_input_route : input_route,
+                      self.layer_input_dropout : 0.1}
+        sess = tf.get_default_session()
+        l1, l2, l3 = sess.run([self.output_action, self.output_route_mean, self.output_route_var],input_list)
+        return l1, l2, l3
+        
+
     def log_caption(self):
         return "\t" + self.name + "_ReconLoss\t" + "\t".join([ "" for _ in range(self.nextstate_len)]) \
             + self.name + "_MaximumAction\t"  \
