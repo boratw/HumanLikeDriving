@@ -14,30 +14,35 @@ class LaneTrace(object):
         self.laneid = None
         self.laneindex = 0
         self.trace_length = trace_length
+        self.lanechanged = False
 
     def Find(self, x, y):
         if self.laneid != None:
             idx = self.FindFromLane(x, y, self.laneid)
             if idx != -1:
                 self.laneindex = idx
+                self.lanechanged = False
                 return
             for laneid in self.laneinfo.lanes[self.laneid]["next"]:
                 idx = self.FindFromLane(x, y, laneid)
                 if idx != -1:
                     self.laneid = laneid
                     self.laneindex = idx
+                    self.lanechanged = False
                     return
             if self.laneinfo.lanes[self.laneid]["left"] != None:
                 idx = self.FindFromLane(x, y, self.laneinfo.lanes[self.laneid]["left"])
                 if idx != -1:
                     self.laneid = self.laneinfo.lanes[self.laneid]["left"]
                     self.laneindex = idx
+                    self.lanechanged = True
                     return
             if self.laneinfo.lanes[self.laneid]["right"] != None:
                 idx = self.FindFromLane(x, y, self.laneinfo.lanes[self.laneid]["right"])
                 if idx != -1:
                     self.laneid = self.laneinfo.lanes[self.laneid]["right"]
                     self.laneindex = idx
+                    self.lanechanged = True
                     return
 
 
@@ -46,6 +51,7 @@ class LaneTrace(object):
             if idx != -1:
                 self.laneid = laneid
                 self.laneindex = idx
+                self.lanechanged = False
                 return
 
 

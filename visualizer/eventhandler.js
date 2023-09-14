@@ -33,8 +33,8 @@ function GenerateDocument()
               },
               scales: {
                   y: {
-                      max: 10.,
-                      min: -10.,
+                      max: 4.,
+                      min: -4.,
                       ticks: {
                           stepSize: 1
                       }
@@ -62,6 +62,10 @@ function AssignEventHandlers()
 
     document.getElementById("slider_step").addEventListener("input", OnStepSliderChanged)
     document.getElementById("textbox_step").addEventListener("change", OnStepTextChanged)
+    document.getElementById("slider_latentstart").addEventListener("input", OnLatentStartSliderChanged)
+    document.getElementById("textbox_latentstart").addEventListener("change", OnLatentStartTextChanged)
+    document.getElementById("slider_latentend").addEventListener("input", OnLatentEndSliderChanged)
+    document.getElementById("textbox_latentend").addEventListener("change", OnLatentEndTextChanged)
     document.getElementById("checkbox_blur").addEventListener("change", (event)=>{draw_potential = document.getElementById("checkbox_blur").checked; DrawCanvas();})
     document.getElementById("button_d100").addEventListener("click", (event)=>{document.getElementById("textbox_step").value = (Number(current_step) - 100); OnStepTextChanged();})
     document.getElementById("button_d20").addEventListener("click", (event)=>{document.getElementById("textbox_step").value = (Number(current_step) - 20); OnStepTextChanged();})
@@ -116,13 +120,41 @@ function OnStepTextChanged(event)
 {
     current_step = document.getElementById("textbox_step").value;
     document.getElementById("slider_step").value = current_step;
-    RequestCurrentMap();
+    RequestCurrentStep();
 }
 function OnStepSliderChanged(event)
 {
     current_step = document.getElementById("slider_step").value;
     document.getElementById("textbox_step").value = current_step;
-    RequestCurrentMap();
+    RequestCurrentStep();
+}
+function OnLatentStartTextChanged(event)
+{
+    current_step = document.getElementById("textbox_latentstart").value;
+    document.getElementById("slider_latentstart").value = current_step;
+    if(clicked != -1)
+        RequestLatentPredicted(clicked);
+}
+function OnLatentStartSliderChanged(event)
+{
+    current_step = document.getElementById("slider_latentstart").value;
+    document.getElementById("textbox_latentstart").value = current_step;
+    if(clicked != -1)
+        RequestLatentPredicted(clicked);
+}
+function OnLatentEndTextChanged(event)
+{
+    current_step = document.getElementById("textbox_latentend").value;
+    document.getElementById("slider_latentend").value = current_step;
+    if(clicked != -1)
+        RequestLatentPredicted(clicked);
+}
+function OnLatentEndSliderChanged(event)
+{
+    current_step = document.getElementById("slider_latentend").value;
+    document.getElementById("textbox_latentend").value = current_step;
+    if(clicked != -1)
+        RequestLatentPredicted(clicked);
 }
 
 function OnLatentSliderChanged(i)

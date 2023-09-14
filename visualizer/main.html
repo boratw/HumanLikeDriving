@@ -12,6 +12,7 @@
             InitCanvas();
             AssignEventHandlers();
             RequestCurrentMap();
+            RequestCurrentStep();
             DrawCanvas();
         }
     </script>
@@ -71,7 +72,17 @@
                 <input type="checkbox" id="checkbox_blur" checked>
                 <label for="checkbox_blur">Show Safety Potential</label>
             </div>
-            <input style="width:480px;" id="slider_impatience" type="range" min="0" max="100" value="0">
+            Latent Prediction
+            <br>
+            <span style="display: inline-block;width:60px">Start:</span>
+            <input  id="textbox_latentstart" style="width:10em;"type="input" value="0">
+            <br>
+            <input style="width:480px;" id="slider_latentstart" type="range" min="0" max="100" value="0">
+            <br>
+            <span style="display: inline-block;width:60px">End:</span>
+            <input  id="textbox_latentend" style="width:10em;"type="input" value="0">
+            <br>
+            <input style="width:480px;" id="slider_latentend" type="range" min="0" max="100" value="0">
         </div>
     
     </div>

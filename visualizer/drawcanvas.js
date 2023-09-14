@@ -18,8 +18,9 @@ var clicked = -1;
 
 var current_step = 0;
 var vehicles = [];
-var latents = {};
 var predicteds = [[]];
+var latent_predicted_mu = null;
+var latent_predicted_var = null;
 var latent_data = {};
 var latent_output = undefined;
 var latent_idx = null;
@@ -72,48 +73,6 @@ function DrawCanvas()
 
     }
 
-    if(latent_output != undefined && clicked != -1)
-    {
-        if(latent_output.length > 1)
-        {
-            for(var action = 0; action < latent_output.length; action++)
-            {
-                v = vehicles[clicked];
-                l = latent_output[action]
-                prob = latent_output_prob[action]
-                drawctx.strokeStyle = "rgba(255, 0, 0, " + prob + ")";
-                drawctx.save()
-                drawctx.transform(1, 0, 0, 1, v[0], v[1])
-                drawctx.rotate(v[2])
-
-                drawctx.beginPath();
-                for(var i = 1; i < v.length; ++i)
-                {
-                    drawctx.lineTo(l[i][0], l[i][1]);
-                }
-                drawctx.stroke();
-
-                drawctx.beginPath();
-                drawctx.strokeStyle = "rgba(255, 0, 0, " + prob + ")";
-                for(var i = 1; i < v.length; ++i)
-                {
-                    drawctx.ellipse(l[i][0], l[i][1], l[i][2], l[i][3], 0, 0, 2 * Math.PI);
-                }
-                drawctx.stroke();
-
-                drawctx.beginPath();
-                drawctx.strokeStyle = "rgba(0, 0, 255, " + prob + ")";
-                for(var i = 1; i < v.length; ++i)
-                {
-                    drawctx.ellipse(l[i][0], l[i][1], l[i][4], l[i][5], 0, 0, 2 * Math.PI);
-                }
-                drawctx.stroke();
-
-                drawctx.restore()
-            }
-        }
-    }
-
     drawctx.strokeStyle = "rgba(0, 255, 0)";
     drawctx.lineWidth = 0.5;
     if(real_output != undefined)
@@ -130,6 +89,52 @@ function DrawCanvas()
 
         }
     }
+    if(latent_output != undefined && clicked != -1)
+    {
+        if(latent_output.length > 1)
+        {
+            for(var action = 0; action < latent_output.length; action++)
+            {
+                v = vehicles[clicked];
+                l = latent_output[action]
+                prob = latent_output_prob[action]
+                drawctx.strokeStyle = "rgba(255, 0, 0, " + prob + ")";
+                drawctx.lineWidth = 0.2;
+                drawctx.save()
+                drawctx.transform(1, 0, 0, 1, v[0], v[1])
+                drawctx.rotate(v[2])
+
+                drawctx.beginPath();
+                drawctx.moveTo(l[0][0], l[0][1]);
+                for(var i = 1; i < l.length; ++i)
+                {
+                    drawctx.lineTo(l[i][0], l[i][1]);
+                }
+                drawctx.stroke();
+                
+                drawctx.strokeStyle = "rgba(255, 0, 0, " + prob + ")";
+                drawctx.lineWidth = 0.2;
+                for(var i = 1; i < l.length; ++i)
+                {
+                    drawctx.beginPath();
+                    drawctx.ellipse(l[i][0], l[i][1], l[i][3] * 50., l[i][3] * 50., 0, 0, 2 * Math.PI);
+                    drawctx.stroke();
+                }
+
+                drawctx.strokeStyle = "rgba(0, 0, 255, " + prob + ")";
+                for(var i = 1; i < l.length; ++i)
+                {
+                    drawctx.beginPath();
+                    drawctx.ellipse(l[i][0], l[i][1], l[i][5] * 5., l[i][5] * 5., 0, 0, 2 * Math.PI);
+                    drawctx.stroke();
+                }
+
+                
+                drawctx.restore()
+            }
+        }
+    }
+
     visctx.drawImage(drawctx.canvas, 0, 0);
 }
 
@@ -160,43 +165,12 @@ function CanvasClick(x, y)
         {
             linechart.data.datasets = latent_data[clicked];
             linechart.update('none');
-            MoveLatentToDefault();
+            RequestLatentPredicted(clicked);
         }
         else
         {
-            RequestCurrentAgent(clicked);
+            RequestLatentData(clicked);
         }
     }
     DrawCanvas();
-}
-
-function MoveLatentToDefault()
-{
-    for(var i = 0; i < latent_length; ++i)
-    {
-        box = document.getElementById("box_l" + i)
-        slider = document.getElementById("slider_l" + i)
-        //mu = Math.round(latents[clicked][i][0] * 100)
-        //l = mu * 0.45 + 180 - latents[clicked][i][1] * 45
-        //r = mu * 0.45 + 180 + latents[clicked][i][1] * 45
-        mu = Math.round(latents[clicked][i] * 100)
-        l = mu * 1.8 + 180 - 0.1 * 45
-        r = mu * 1.8 + 180 + 0.1 * 45
-        if(l < 0)
-            l = 0
-        else if (l > 360)
-            l = 360
-        if(r < 0)
-            r = 0
-        else if (r > 360)
-            r = 360
-        box.style.left = l + "px"
-        box.style.width = (r-l) + "px"
-        document.getElementById("slider_l" + i).value = mu
-        document.getElementById("value_l" + i).innerHTML = mu / 100
-    }
-
-
-    RequestLatentResult();
-
 }

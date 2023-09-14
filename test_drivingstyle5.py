@@ -13,7 +13,7 @@ except IndexError:
 import tensorflow.compat.v1 as tf
 from laneinfo import LaneInfo
 from lanetrace import LaneTrace
-from network.DrivingStyle5_bayesian_latent import DrivingStyleLearner
+from network.DrivingStyle8_bayesian_latent import DrivingStyleLearner
 from datetime import datetime
 import numpy as np
 import pickle
@@ -56,20 +56,22 @@ def SendLatents(list):
     target = int(list[0])
     o_mu = global_latent_mu[target]
     o_var = global_latent_std[target]
-    res = json.dumps({"mu" : o_mu, "var" : o_var}, cls=MyEncoder)
+    res = json.dumps({"mu" : o_mu, "std" : o_var}, cls=MyEncoder)
     return res
 
 def SendPredLatent(list):
     target = int(list[0])
     start = int(list[1])
     end = int(list[2])
+    if start > end:
+        start = end
     m = np.zeros((global_latent_len, ))
     d = np.zeros((global_latent_len, ))
     for x in range(start, end + 1):
         m += global_latent_mu[target][x] / global_latent_std[target][x]
-        d += 1 / global_latent_std[target][x]
+        d += 1. / global_latent_std[target][x]
     m /= d
-    v = -np.log(d / (end - start + 1))
+    v = (end - start + 1) / d
     res = json.dumps({"mu" : m, "std" : v}, cls=MyEncoder)
     return res
     
@@ -79,88 +81,38 @@ def SendOutput(list):
         
     d_state = [[state_vectors[step_start_index + current_step + j][target][0], state_vectors[step_start_index + current_step + j][target][1]] for j in range(0, 60, 15)]
     l_state = [ [[0., 0., 0., 0., 0., 0. ]] for j in range(action_len)]
-    o_predicted = [ [] for j in range(action_len)]
-    o_action = [0.] * action_len
+    o_action = [0.] * (action_len + 2)
     global_latent_dic = [[float(list[2 * i + 1]) for i in range(4)] for _ in range(16) ]
     
-    #global_latent_dic = [(global_latent_mu[target][current_step] + np.array([list[2 * i + 1] for i in range(4)])) / 2. for _ in range(16) ]
-    global_latent_ep = np.array([float(list[2 * i + 2]) for i in range(4)])
 
+    state_dic = [cur_history[target][current_step][0] for _ in range(16)]
+    route_dic = [cur_history[target][current_step][2] for _ in range(16)]
+    with sess.as_default():
+        res_route_mean, res_route_var, res_action_mean, res_action_var = learner.get_output(state_dic, route_dic, global_latent_dic)
+    res_route_std = np.sqrt(res_route_var)
+    res_action_std = np.sqrt(res_action_var)
+    a0 = np.mean(np.exp(- (res_action_mean ** 2) / res_action_std))
+    a1 = np.mean(np.exp(- ((res_action_mean - 1.) ** 2) / res_action_std))
+    a2 = np.mean(np.exp(- ((res_action_mean + 1.) ** 2) / res_action_std))
+    o_action[0] = a0 / (a0 + a1 + a2)
+    o_action[1] = a1 / (a0 + a1 + a2)
+    o_action[2] = a2 / (a0 + a1 + a2)
+    o_action[3] = np.mean(res_action_std)
+    o_action[4] = np.std(res_route_mean)
+    
     for i in range(action_len):
-        """
-        x = state_vectors[step_start_index + current_step][target][0]
-        y = state_vectors[step_start_index + current_step][target][1]
-        for step in range(5):
-            state_dic = [cur_history[target][current_step + step * 15][0] for _ in range(16)]
-            
-            yawsin = np.sin(state_vectors[step_start_index + current_step + step * 15][target][2] * 0.017453293)
-            yawcos = np.cos(state_vectors[step_start_index + current_step + step * 15][target][2] * 0.017453293)
-            traced, tracec = lane_tracers[target].Trace(x, y)
 
-
-            route = []
-            if traced == None:
-                for trace in range(action_len):
-                    waypoints = []
-                    for j in range(route_len // 2):
-                        waypoints.extend([0., 0.])
-                    route.append(waypoints)
-            else:
-                for trace in traced:
-                    waypoints = []
-                    for j in trace:
-                        px, py = rotate(j[0] - x, j[1] - y, yawsin, yawcos)
-                        waypoints.extend([px, py])
-                    route.append(waypoints)
-            route_dic = [route for _ in range(16)]
-            
-            with sess.as_default():
-                res_action, res_mean, res_var = learner.get_output(state_dic, route_dic, global_latent_dic)
-            if step == 0:
-                o_action[i] = float(np.mean(res_action[:, i]))
-                
-            o_mean =  np.mean(res_mean[:, i, :], axis=0)
-            o_ep_var = np.mean(res_var[:, i, :], axis=0)
-            o_al_var = np.var(res_mean[:, i, :], axis=0)
-
-            lx, ly = 0., 0.
-            for j in range(3):
-                lx += o_mean[j * 2]
-                ly += o_mean[j * 2 + 1]
-                if len(o_predicted[i]) > (step + j):
-                    o_predicted[i][step + j][0] = (lx + o_predicted[i][step + j][0]) / 2
-                    o_predicted[i][step + j][1] = (ly + o_predicted[i][step + j][1]) / 2
-                    o_predicted[i][step + j][2] = (o_predicted[i][step + j][2] + o_ep_var[j * 2]) / 2
-                    o_predicted[i][step + j][3] = (o_predicted[i][step + j][3] + o_ep_var[j * 2 + 1]) / 2
-                    o_predicted[i][step + j][4] = (o_predicted[i][step + j][4] + o_al_var[j * 2]) / 2
-                    o_predicted[i][step + j][5] = (o_predicted[i][step + j][5] + o_al_var[j * 2 + 1]) / 2
-                else:
-                    o_predicted[i].append([lx, ly, o_ep_var[j * 2], o_ep_var[j * 2 + 1], o_al_var[j * 2], o_al_var[j * 2 + 1]])
-
-
-            px, py = rotate(o_predicted[i][step][0], o_predicted[i][step][1], -yawsin, yawcos)
-            x += px
-            y += py
-
-        for step in range(5):
-            l_state[i].append([float(o_predicted[i][step][0]), float(o_predicted[i][step][1]), float(np.sqrt(o_predicted[i][step][2])),
-                               float(np.sqrt(o_predicted[i][step][3])), float(np.sqrt(o_predicted[i][step][4])), float(np.sqrt(o_predicted[i][step][5]))])
-        """
-        state_dic = [cur_history[target][current_step][0] for _ in range(16)]
-        route_dic = [cur_history[target][current_step][2] for _ in range(16)]
-        with sess.as_default():
-            res_action, res_mean, res_var = learner.get_output(state_dic, route_dic, global_latent_dic)
-        o_action[i] = float(np.mean(res_action[:, i]))
-        o_mean =  np.mean(res_mean[:, i, :], axis=0)
-        o_ep_var = np.mean(res_var[:, i, :], axis=0)
-        o_al_var = np.var(res_mean[:, i, :], axis=0)
+        o_mean =  np.mean(res_route_mean[:, i, :], axis=0)
+        o_ep_var = np.mean(np.sqrt(res_route_std[:, i, :]), axis=0)
+        o_al_var = np.std(res_route_mean[:, i, :], axis=0)
         x = 0.
         y = 0.
         for j in range(3):
             x += o_mean[j * 2]
             y += o_mean[j * 2 + 1]
             l_state[i].append([float(x), float(y), float(np.sqrt(o_ep_var[j * 2])),
-                               float(np.sqrt(o_ep_var[j * 2 + 1])), float(np.sqrt(o_al_var[j * 2])), float(np.sqrt(o_al_var[j * 2 + 1]))])
+                                float(np.sqrt(o_ep_var[j * 2 + 1])), float(np.sqrt(o_al_var[j * 2])), float(np.sqrt(o_al_var[j * 2 + 1]))])
+        
     res = json.dumps({"route" : d_state, "predicted" : l_state, "action_prob" : o_action}, cls=MyEncoder)
     print("vehicle " + str(target) + " step " + str(current_step))
     return res
@@ -194,7 +146,7 @@ sess = tf.Session()
 with sess.as_default():
     learner = DrivingStyleLearner(state_len=state_len, nextstate_len=nextstate_len, route_len=route_len, action_len= action_len, istraining=False)
     learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
-    learner_saver.restore(sess, "train_log/DrivingStyle5_Bayesian_Latent/log_2023-09-07-18-04-59_100.ckpt")
+    learner_saver.restore(sess, "train_log/DrivingStyle8_Bayesian_Latent/log_2023-09-13-19-27-11_160.ckpt")
 
     with open("data/gathered_from_npc_batjeon6/data_" + str(pkl_index) + ".pkl","rb") as fr:
         data = pickle.load(fr)
@@ -208,7 +160,7 @@ with sess.as_default():
     torque_added = [0 for _ in range(agent_count)]
 
     step_start_index = 200
-    step_count = len(state_vectors) - step_start_index - 150
+    step_count = 200 # len(state_vectors) - step_start_index - 150
 
     for step in range(step_start_index, step_start_index+step_count):
         if step % 100 == 0:
@@ -262,14 +214,17 @@ with sess.as_default():
                 if np.sqrt(px * px + py * py) >  np.sqrt((t[0] - x) * (t[0] - x) + (t[1] - y) * (t[1] - y)):
                     px, py = rotate(t[0] - x, t[1] - y, yawsin, yawcos)
                     
-            if (nextstate[1] + nextstate[3] + nextstate[5]) < -1.5:
-                action = 0
-            elif (nextstate[1] + nextstate[3] + nextstate[5]) > 1.5:
-                action = 2
-            else:
-                action = 1
+            trace_result = 0
+            mindist = 99999
+            for j, trace, c in zip(range(action_len), traced, tracec):
+                if c:
+                    dist = (trace[9][0] - state_vectors[step + 100][i][0]) ** 2 + (trace[9][1] - state_vectors[step + 100][i][1]) ** 2
+                    if dist < mindist:
+                        trace_result = j
+                        mindist = dist
 
-            cur_history[i].append( [np.concatenate([[velocity, (1. if state_vectors[step][5] == 0. else 0.), px, py, control_vectors[step][i][1]], other_vcs[:8,:6].flatten()]), nextstate, route, action, torque_added[i]])
+
+            cur_history[i].append( [np.concatenate([[velocity, (1. if state_vectors[step][5] == 0. else 0.), px, py, control_vectors[step][i][1]], other_vcs[:8,:6].flatten()]), nextstate, route, trace_result, torque_added[i]])
             if torque_added[i] > 0:
                 torque_added[i] -= 1
 

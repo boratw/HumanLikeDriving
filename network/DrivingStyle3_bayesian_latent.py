@@ -8,7 +8,7 @@ from network.bayesian_mlp import Bayesian_FC
 
 class DrivingStyleLearner():
     def __init__(self, name=None, reuse=False, state_len = 59, nextstate_len = 2, route_len = 10, action_len=3, regularizer_weight= 0.001,
-                 lr = 0.001, not_action_lr = 0.05, latent_len=4, decoder_shuffle_num=7, variance_magnifier=0.001):
+                 lr = 0.001, not_action_lr = 0.05, latent_len=4, decoder_shuffle_num=7, variance_magnifier=0., real_error_during_train_latent = 0.1):
 
         if name == None:
             self.name = "DrivingStyleLearner"
@@ -39,7 +39,6 @@ class DrivingStyleLearner():
             self.l_latent = Bayesian_FC(self.enc_h2.layer_output, 128, latent_len, input_dropout = None, 
                                   output_nonln = None, name="l_latent")
             self.latent = self.l_latent.layer_output
-            batched_global_latent = tf.tile(self.latent, [decoder_shuffle_num+1, 1])
             shuffled_global_latent = tf.tile(self.latent, [decoder_shuffle_num, 1])
             tf.random.shuffle(shuffled_global_latent)
             global_latent_noise = tf.random.normal(tf.shape(shuffled_global_latent))
@@ -67,10 +66,16 @@ class DrivingStyleLearner():
             self.local_mixed_minimum_loss_action = tf.math.argmin(self.local_mixed_route_error, axis=1)
             self.local_mixed_minimum_route_error = (tf.gather(self.local_mixed_output_route, self.local_mixed_minimum_loss_action, axis=1, batch_dims=1) - batched_input_nextstate) ** 2
 
-            self.local_mixed_latent_error = 1. / (tf.reduce_mean(self.local_mixed_minimum_route_error, axis=1) + 0.001)
-            self.local_latent_error = tf.reduce_mean(-(batched_global_latent / (tf.math.sqrt(tf.reduce_sum(batched_global_latent ** 2, axis=1, keepdims=True)) + 1e-5)) * 
-                                               tf.stop_gradient(self.latent_local_decoder_input / (tf.math.sqrt(tf.reduce_sum(self.latent_local_decoder_input ** 2, axis=1, keepdims=True)) + 1e-5)),
-                                               axis=1) * tf.stop_gradient(self.local_mixed_latent_error)
+            local_latent_route_error = tf.reduce_mean(self.local_mixed_minimum_route_error, axis=1)
+            local_latent_route_error = tf.reshape(local_latent_route_error, [decoder_shuffle_num+1, -1])
+            local_latent_route_error = tf.exp(-local_latent_route_error)
+            local_latent_route_error = local_latent_route_error / (tf.reduce_sum(local_latent_route_error, axis=0, keepdims=True) + 1e-5)
+            local_latent_route_error = tf.reshape(local_latent_route_error, [-1])
+            batched_global_latent = tf.tile(self.latent, [decoder_shuffle_num+1, 1])
+            #latent_similarity = (batched_global_latent / (tf.math.sqrt(tf.reduce_sum(batched_global_latent ** 2, axis=1, keepdims=True)) + 1e-5)) * \
+            #                tf.stop_gradient(self.latent_local_decoder_input / (tf.math.sqrt(tf.reduce_sum(self.latent_local_decoder_input ** 2, axis=1, keepdims=True)) + 1e-5))
+            latent_difference = tf.abs(batched_global_latent - tf.stop_gradient(self.latent_local_decoder_input))
+            self.local_latent_error = tf.reduce_mean(latent_difference, axis=1) * tf.stop_gradient(local_latent_route_error)
 
             self.local_output_action_vec = tf.split(self.local_mixed_output_action, decoder_shuffle_num+1, axis=0)
             self.local_route_error_vec = tf.split(self.local_mixed_route_error, decoder_shuffle_num+1, axis=0)
@@ -120,7 +125,8 @@ class DrivingStyleLearner():
 
             self.optimizer = tf.train.AdamOptimizer(lr)
 
-            self.train_latent = self.optimizer.minimize(loss = self.local_latent_error + self.encoder_reg_loss * regularizer_weight + self.variance_magnifier_loss * variance_magnifier,
+            self.train_latent = self.optimizer.minimize(loss = self.local_latent_error + self.encoder_reg_loss * regularizer_weight + self.variance_magnifier_loss * variance_magnifier
+                                                        + tf.reduce_mean(self.local_minimum_route_error) * real_error_during_train_latent,
                                                        var_list=[*self.enc_h1.trainable_params, *self.enc_h2.trainable_params, *self.l_latent.trainable_params] )  
             
             train_route_vars = [*self.local_dec_h1.trainable_params]
@@ -130,7 +136,7 @@ class DrivingStyleLearner():
 
             self.local_train_route = self.optimizer.minimize(loss = tf.reduce_mean(self.local_minimum_route_error) + tf.reduce_mean(self.local_route_error) * not_action_lr
                                                        + self.local_route_reg_loss * regularizer_weight,
-                                                       var_list=[*train_route_vars, *self.enc_h1.trainable_params, *self.enc_h2.trainable_params, *self.l_latent.trainable_params] )
+                                                       var_list=train_route_vars )
             action_possibility = self.action_normalizer / self.local_route_error
             action_possibility_softmax = action_possibility / tf.reduce_sum(action_possibility, axis=1, keepdims=True)
             self.local_action_error = - tf.stop_gradient(action_possibility_softmax) * self.local_output_action
