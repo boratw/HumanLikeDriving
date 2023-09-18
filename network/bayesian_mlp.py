@@ -65,6 +65,7 @@ class FC:
             
             self.layer_output = out
             self.trainable_params = tf.trainable_variables(scope=tf.get_variable_scope().name)
+            self.regularization_loss = tf.reduce_mean(w ** 2 + b ** 2)
 
 class Variational_FC:
     def __init__(self, input_tensor, input_dim, output_dim, input_dropout= None, output_nonln=None, name=None, reuse=False,):

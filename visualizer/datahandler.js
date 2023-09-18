@@ -122,10 +122,10 @@ function HandleLatentData(c, response)
     }
     for(var i = 0; i < j["mu"].length; ++i)
     {
-        datalist[0]["data"].push(j["mu"][i][0] / j["std"][i][0]);
-        datalist[1]["data"].push(j["mu"][i][1] / j["std"][i][0]);
-        datalist[2]["data"].push(j["mu"][i][2] / j["std"][i][0]);
-        datalist[3]["data"].push(j["mu"][i][3] / j["std"][i][0]);
+        datalist[0]["data"].push(j["mu"][i][0] * 0.5 / Math.min(j["std"][i][0], 1));
+        datalist[1]["data"].push(j["mu"][i][1] * 0.5 / Math.min(j["std"][i][0], 1));
+        datalist[2]["data"].push(j["mu"][i][2] * 0.5 / Math.min(j["std"][i][0], 1));
+        datalist[3]["data"].push(j["mu"][i][3] * 0.5 / Math.min(j["std"][i][0], 1));
     }
     latent_data[c] = datalist;
     if(clicked == c)

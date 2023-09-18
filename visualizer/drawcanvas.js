@@ -93,16 +93,18 @@ function DrawCanvas()
     {
         if(latent_output.length > 1)
         {
+            v = vehicles[clicked];
+
+            drawctx.save()
+            drawctx.transform(1, 0, 0, 1, v[0], v[1])
+            drawctx.rotate(v[2])
             for(var action = 0; action < latent_output.length; action++)
             {
-                v = vehicles[clicked];
                 l = latent_output[action]
                 prob = latent_output_prob[action]
+
                 drawctx.strokeStyle = "rgba(255, 0, 0, " + prob + ")";
                 drawctx.lineWidth = 0.2;
-                drawctx.save()
-                drawctx.transform(1, 0, 0, 1, v[0], v[1])
-                drawctx.rotate(v[2])
 
                 drawctx.beginPath();
                 drawctx.moveTo(l[0][0], l[0][1]);
@@ -117,7 +119,7 @@ function DrawCanvas()
                 for(var i = 1; i < l.length; ++i)
                 {
                     drawctx.beginPath();
-                    drawctx.ellipse(l[i][0], l[i][1], l[i][3] * 50., l[i][3] * 50., 0, 0, 2 * Math.PI);
+                    drawctx.ellipse(l[i][0], l[i][1], l[i][3] * 5., l[i][3] * 5., 0, 0, 2 * Math.PI);
                     drawctx.stroke();
                 }
 
@@ -130,8 +132,39 @@ function DrawCanvas()
                 }
 
                 
-                drawctx.restore()
             }
+            drawctx.strokeStyle = "rgb(255, 255, 0)";
+            drawctx.lineWidth = 0.2;
+            drawctx.beginPath();
+            drawctx.moveTo(-2.0, -2.0);
+            drawctx.lineTo(-4.0, -2.0);
+            drawctx.moveTo(-2.0, 0.0);
+            drawctx.lineTo(-4.0, 0.0);
+            drawctx.moveTo(-2.0, 2.0);
+            drawctx.lineTo(-4.0, 2.0);
+            drawctx.stroke();
+
+            mu = (latent_output_prob[2] - latent_output_prob[1]) * 2.
+            var1 = latent_output_prob[3] * 5.
+            var2 = latent_output_prob[4] * 0.2
+
+            
+            
+            drawctx.strokeStyle = "rgb(255, 0, 0)";
+            drawctx.lineWidth = 0.5;
+            drawctx.beginPath();
+            drawctx.moveTo(-2.5, Math.max(mu - var1, -2));
+            drawctx.lineTo(-2.5, Math.min(mu + var1, 2));
+            drawctx.stroke();
+
+            drawctx.strokeStyle = "rgb(0, 0, 255)";
+            drawctx.beginPath();
+            drawctx.moveTo(-3.5, Math.max(mu - var2, -2));
+            drawctx.lineTo(-3.5, Math.min(mu + var2, 2));
+            drawctx.stroke();
+
+
+            drawctx.restore()
         }
     }
 
