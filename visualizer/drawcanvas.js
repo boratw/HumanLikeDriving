@@ -101,7 +101,7 @@ function DrawCanvas()
             for(var action = 0; action < latent_output.length; action++)
             {
                 l = latent_output[action]
-                prob = latent_output_prob[action]
+                prob = latent_output_prob[action][0]
 
                 drawctx.strokeStyle = "rgba(255, 0, 0, " + prob + ")";
                 drawctx.lineWidth = 0.2;
@@ -145,8 +145,7 @@ function DrawCanvas()
             drawctx.stroke();
 
             mu = (latent_output_prob[2] - latent_output_prob[1]) * 2.
-            var1 = latent_output_prob[3] * 5.
-            var2 = latent_output_prob[4] * 0.2
+            var1 = latent_output_prob[3] * 0.2
 
             
             
@@ -155,12 +154,6 @@ function DrawCanvas()
             drawctx.beginPath();
             drawctx.moveTo(-2.5, Math.max(mu - var1, -2));
             drawctx.lineTo(-2.5, Math.min(mu + var1, 2));
-            drawctx.stroke();
-
-            drawctx.strokeStyle = "rgb(0, 0, 255)";
-            drawctx.beginPath();
-            drawctx.moveTo(-3.5, Math.max(mu - var2, -2));
-            drawctx.lineTo(-3.5, Math.min(mu + var2, 2));
             drawctx.stroke();
 
 

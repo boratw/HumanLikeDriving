@@ -36,8 +36,7 @@ function RequestOutput()
     };
     url = "/v/predictroute/" + clicked + "/";
     for(var i = 0; i < latent_length; ++i)
-        if(latent_predicted_var != null)
-            url += document.getElementById("value_l" + i).innerHTML + "/" + latent_predicted_var[i] + "/"
+        url += document.getElementById("value_l" + i).innerHTML + "/"
     xmlHttp.open("GET", url, true);
     xmlHttp.send();
 }
@@ -122,10 +121,10 @@ function HandleLatentData(c, response)
     }
     for(var i = 0; i < j["mu"].length; ++i)
     {
-        datalist[0]["data"].push(j["mu"][i][0] * 0.5 / Math.min(j["std"][i][0], 1));
-        datalist[1]["data"].push(j["mu"][i][1] * 0.5 / Math.min(j["std"][i][0], 1));
-        datalist[2]["data"].push(j["mu"][i][2] * 0.5 / Math.min(j["std"][i][0], 1));
-        datalist[3]["data"].push(j["mu"][i][3] * 0.5 / Math.min(j["std"][i][0], 1));
+        datalist[0]["data"].push(j["mu"][i][0]);
+        datalist[1]["data"].push(j["mu"][i][1]);
+        datalist[2]["data"].push(j["mu"][i][2]);
+        datalist[3]["data"].push(j["mu"][i][3]);
     }
     latent_data[c] = datalist;
     if(clicked == c)
@@ -164,8 +163,8 @@ function HandleLatentPredicted(c, response)
                 r = 360
             box.style.left = l + "px"
             box.style.width = (r-l) + "px"
-            document.getElementById("slider_l" + i).value = mu
-            document.getElementById("value_l" + i).innerHTML = mu / 100
+            //document.getElementById("slider_l" + i).value = mu
+            //document.getElementById("value_l" + i).innerHTML = mu / 100
         }
         RequestOutput();
     }

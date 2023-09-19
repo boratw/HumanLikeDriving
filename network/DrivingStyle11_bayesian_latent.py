@@ -104,8 +104,8 @@ class DrivingStyleLearner():
                     self.ls_decoder_input_latents = []
                     for output_latent in output_latents:
                         output_latent_count = tf.shape(output_latent)[0]
-                        output_latent_sum = tf.reduce_sum(output_latent, axis=0)
-                        output_latent_norm = output_latent_sum / tf.sqrt(tf.reduce_sum(output_latent_sum ** 2, keepdims=True) + 1e-6)
+                        output_latent_sum = tf.reduce_sum(output_latent, axis=0, keepdims=True)
+                        output_latent_norm = output_latent_sum / tf.stop_gradient(tf.sqrt(tf.reduce_sum(output_latent_sum ** 2, axis=1, keepdims=True) + 1e-6))
                         self.ls_decoder_input_latents.append(tf.tile(tf.reshape(output_latent_norm, [1, latent_len]), [output_latent_count, 1]))
                     self.ls_decoder_input_latent = tf.concat(self.ls_decoder_input_latents, axis=0)
 
@@ -114,11 +114,11 @@ class DrivingStyleLearner():
                     self.ls_decoder_input = tf.concat([self.all_route_input, self.ls_decoder_input_latent], axis=1)
                     self.ls_dec_h1 = Bayesian_FC(self.ls_decoder_input, state_len + action_len * route_len + latent_len, 256, 
                                             input_dropout = self.layer_input_dropout, output_nonln = tf.nn.leaky_relu, name="ls_dec_h1")
-                    self.ls_action = Variational_FC(self.ls_dec_h1.layer_output, 256, 2, input_dropout = None, 
+                    self.ls_action = FC(self.ls_dec_h1.layer_output, 256, action_len, input_dropout = None, 
                                         output_nonln = None, name="ls_action")
                     self.ls_dec_h2 = [Bayesian_FC(self.ls_dec_h1.layer_output, 256, 128, input_dropout = self.layer_input_dropout, 
                                         output_nonln = tf.nn.leaky_relu, name="ls_dec_h2_" + str(i)) for i in range(action_len)]
-                    self.ls_diff = [Variational_FC(self.ls_dec_h2[i].layer_output, 128, nextstate_len, input_dropout = None, 
+                    self.ls_diff = [FC(self.ls_dec_h2[i].layer_output, 128, nextstate_len, input_dropout = None, 
                                         output_nonln = None, name="ls_diff_" + str(i)) for i in range(action_len)]
                     
                     self.ls_output_action = tf.nn.softmax(self.ls_action.layer_output, axis=1)
@@ -126,44 +126,36 @@ class DrivingStyleLearner():
                     self.ls_output_min_diff = tf.gather(self.ls_output_diff, self.layer_input_action, axis=1, batch_dims=1)
                     self.ls_route_error = tf.reduce_mean(tf.abs(self.ls_output_min_diff - self.dsc_min_route_diff), axis=0)
                     self.ls_route_loss = tf.reduce_mean((self.ls_output_min_diff - self.dsc_min_route_diff) ** 2)
-                    action_labels = tf.unstack(self.action_label, axis=1)
-                    action_label0 = action_labels[0]
-                    action_label1 = action_labels[1] + action_labels[2]
-                    action_target = tf.stack([action_label0, action_label1], axis=1)
-                    self.ls_action_loss = tf.reduce_mean(-tf.log(self.ls_output_action + 1e-6) * action_target)
+                    self.ls_action_loss = tf.reduce_mean(-tf.log(self.ls_output_action + 1e-6) * self.action_label)
 
-                    self.ls_optimizer = tf.train.AdamOptimizer(latent_lr)
+                    self.ls_route_optimizer = tf.train.AdamOptimizer(latent_lr)
+                    self.ls_action_optimizer = tf.train.AdamOptimizer(latent_lr)
                     self.ls_enc_reg_loss = (self.ls_enc_h1.regularization_loss + self.ls_enc_h2.regularization_loss +
                                             self.ls_latent.regularization_loss) / 3
-                    self.ls_dec_reg_loss = self.ls_dec_h1.regularization_loss + self.ls_action.regularization_loss
+                    self.ls_dec_action_reg_loss = (self.ls_dec_h1.regularization_loss + self.ls_action.regularization_loss) / 2
+                    self.ls_dec_route_reg_loss = self.ls_dec_h1.regularization_loss
                     for i in range(action_len):
-                        self.ls_dec_reg_loss += self.ls_dec_h2[i].regularization_loss
-                        self.ls_dec_reg_loss += self.ls_diff[i].regularization_loss
-                    self.ls_dec_reg_loss = self.ls_dec_reg_loss / (action_len * 2 + 2)
-                    self.ls_reg_loss = self.ls_enc_reg_loss + self.ls_dec_reg_loss
+                        self.ls_dec_route_reg_loss += self.ls_dec_h2[i].regularization_loss
+                        self.ls_dec_route_reg_loss += self.ls_diff[i].regularization_loss
+                    self.ls_dec_route_reg_loss = self.ls_dec_route_reg_loss / (action_len * 2 + 2)
+                    self.ls_reg_loss = self.ls_enc_reg_loss + self.ls_dec_route_reg_loss + self.ls_dec_action_reg_loss
                     
                     self.ls_average_action_mean = tf.reduce_mean(self.ls_output_action, axis=0)
                     self.ls_average_latent_mean = tf.reduce_mean(self.ls_output_latent ** 2, axis=0)
                     self.ls_latent_reg_loss = tf.reduce_mean(self.ls_average_latent_mean)
 
-                    train_latent_vars = [*self.ls_enc_h1.trainable_params, *self.ls_enc_h2.trainable_params, 
-                                         *self.ls_latent.trainable_params, *self.ls_dec_h1.trainable_params,
-                                         *self.ls_action.trainable_params]
-                    for i in range(action_len):
-                        train_latent_vars.extend(self.ls_dec_h2[i].trainable_params)
-                        train_latent_vars.extend(self.ls_diff[i].trainable_params)
-                    self.ls_train_route = self.ls_optimizer.minimize(loss = 
+                    self.ls_train_route = self.ls_route_optimizer.minimize(loss = 
                                                             self.ls_route_loss +
                                                             self.ls_enc_reg_loss * regularizer_weight +
-                                                            self.ls_dec_reg_loss * regularizer_weight +
+                                                            self.ls_dec_route_reg_loss * regularizer_weight +
                                                             self.ls_latent_reg_loss * regularizer_weight,
-                                                            var_list = train_latent_vars )   
-                    self.ls_train_action = self.ls_optimizer.minimize(loss = 
+                                                            var_list = tf.trainable_variables(scope=tf.get_variable_scope().name) )   
+                    self.ls_train_action = self.ls_action_optimizer.minimize(loss = 
                                                             self.ls_action_loss +
                                                             self.ls_enc_reg_loss * regularizer_weight +
-                                                            self.ls_dec_reg_loss * regularizer_weight +
+                                                            self.ls_dec_action_reg_loss * regularizer_weight +
                                                             self.ls_latent_reg_loss * regularizer_weight,
-                                                            var_list = train_latent_vars )   
+                                                            var_list = tf.trainable_variables(scope=tf.get_variable_scope().name) )   
             else:
                 with tf.variable_scope("LatentLearner", reuse=reuse):
                     self.ls_encoder_input = tf.concat([self.all_route_input, self.action_label, tf.stop_gradient(self.dsc_min_route_diff)], axis=1)
@@ -179,27 +171,27 @@ class DrivingStyleLearner():
                     self.ls_decoder_input = tf.concat([self.all_route_input, self.ls_output_latent], axis=1)
                     self.ls_dec_h1 = Bayesian_FC(self.ls_decoder_input, state_len + action_len * route_len + latent_len, 256, 
                                             input_dropout = self.layer_input_dropout, output_nonln = tf.nn.leaky_relu, name="ls_dec_h1")
-                    self.ls_action = Variational_FC(self.ls_dec_h1.layer_output, 256, 2, input_dropout = None, 
+                    self.ls_action = FC(self.ls_dec_h1.layer_output, 256, 2, input_dropout = None, 
                                         output_nonln = None, name="ls_action")
                     self.ls_dec_h2 = [Bayesian_FC(self.ls_dec_h1.layer_output, 256, 128, input_dropout = self.layer_input_dropout, 
                                         output_nonln = tf.nn.leaky_relu, name="ls_dec_h2_" + str(i)) for i in range(action_len)]
-                    self.ls_diff = [Variational_FC(self.ls_dec_h2[i].layer_output, 128, nextstate_len, input_dropout = None, 
+                    self.ls_diff = [FC(self.ls_dec_h2[i].layer_output, 128, nextstate_len, input_dropout = None, 
                                         output_nonln = None, name="ls_diff_" + str(i)) for i in range(action_len)]
                     
                     self.ls_infer_decoder_input = tf.concat([self.all_route_input, self.layer_input_latent], axis=1)
                     self.ls_infer_dec_h1 = Bayesian_FC(self.ls_infer_decoder_input, state_len + action_len * route_len + latent_len, 256, 
                                             input_dropout = self.layer_input_dropout, output_nonln = tf.nn.leaky_relu, name="ls_dec_h1", reuse=True)
-                    self.ls_infer_action = Variational_FC(self.ls_infer_dec_h1.layer_output, 256, 2, input_dropout = None, 
+                    self.ls_infer_action = FC(self.ls_infer_dec_h1.layer_output, 256, 2, input_dropout = None, 
                                         output_nonln = None, name="ls_action", reuse=True)
                     self.ls_infer_dec_h2 = [Bayesian_FC(self.ls_infer_dec_h1.layer_output, 256, 128, input_dropout = self.layer_input_dropout, 
                                         output_nonln = tf.nn.leaky_relu, name="ls_dec_h2_" + str(i), reuse=True ) for i in range(action_len)]
-                    self.ls_infer_diff = [Variational_FC(self.ls_infer_dec_h2[i].layer_output, 128, nextstate_len, input_dropout = None, 
+                    self.ls_infer_diff = [FC(self.ls_infer_dec_h2[i].layer_output, 128, nextstate_len, input_dropout = None, 
                                         output_nonln = None, name="ls_diff_" + str(i), reuse=True) for i in range(action_len)]
                     
 
                     self.ls_infer_output_diff = tf.stack([self.ls_infer_diff[i].mu for i in range(action_len)], axis=1)
 
-                    self.output_route_mean = self.dsc_output_route - self.ls_infer_output_diff
+                    self.output_route_mean = self.dsc_output_route# - self.ls_infer_output_diff
                     self.output_route_var = tf.stack([self.ls_infer_diff[i].var for i in range(action_len)], axis=1)
 
                     self.output_action = tf.nn.softmax(self.ls_infer_action.layer_output, axis=1)
@@ -254,6 +246,7 @@ class DrivingStyleLearner():
                           self.ls_average_latent_mean, self.ls_route_error,
                           self.ls_latent_variance,
                           self.ls_reg_loss, self.ls_action_loss, self.ls_average_action_mean],input_list)
+        
         
         self.log_latent_mean += l1
         self.log_latent_rec += l10

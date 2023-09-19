@@ -13,7 +13,7 @@ except IndexError:
 import tensorflow.compat.v1 as tf
 from laneinfo import LaneInfo
 from lanetrace import LaneTrace
-from network.DrivingStyle9_bayesian_latent import DrivingStyleLearner
+from network.DrivingStyle10_bayesian_latent import DrivingStyleLearner
 from datetime import datetime
 import numpy as np
 import pickle
@@ -55,8 +55,7 @@ def SendExpInfo(nothing):
 def SendLatents(list):
     target = int(list[0])
     o_mu = global_latent_mu[target]
-    o_var = global_latent_std[target]
-    res = json.dumps({"mu" : o_mu, "std" : o_var}, cls=MyEncoder)
+    res = json.dumps({"mu" : o_mu}, cls=MyEncoder)
     return res
 
 def SendPredLatent(list):
@@ -66,19 +65,18 @@ def SendPredLatent(list):
     if start > end:
         start = end
     m = np.zeros((global_latent_len, ))
-    d = np.zeros((global_latent_len, ))
+    d = 0
     i = 0
     for x in range(start, end + 1):
-        if global_latent_mu[target][x].any() != 0:
-            m += global_latent_mu[target][x] * np.exp(-global_latent_std[target][x])
-            d += np.exp(-global_latent_std[target][x])
-            i += 1
+        m += global_latent_mu[target][x]
+        d += np.sum(global_latent_mu[target][x] ** 2)
+        i += 1
     if i != 0:
         m /= d
-        v = -np.log(d / i)
+        v = np.exp(-d)
     else:
-        v = d
-    res = json.dumps({"mu" : m, "std" : v}, cls=MyEncoder)
+        v = 1.
+    res = json.dumps({"mu" : m, "std" : [v] * action_len}, cls=MyEncoder)
     return res
     
 
@@ -87,24 +85,19 @@ def SendOutput(list):
         
     d_state = [[state_vectors[step_start_index + current_step + j][target][0], state_vectors[step_start_index + current_step + j][target][1]] for j in range(0, 60, 15)]
     l_state = [ [[0., 0., 0., 0., 0., 0. ]] for j in range(action_len)]
-    o_action = [0.] * (action_len + 2)
-    global_latent_dic = [[float(list[2 * i + 1]) for i in range(4)] for _ in range(16) ]
+    o_action = [0.] * (action_len + 1)
+    global_latent_dic = [[float(list[i + 1]) for i in range(4)] for _ in range(16) ]
     
 
     state_dic = [cur_history[target][current_step][0] for _ in range(16)]
     route_dic = [cur_history[target][current_step][2] for _ in range(16)]
     with sess.as_default():
-        res_route_mean, res_route_var, res_action_mean, res_action_var = learner.get_output(state_dic, route_dic, global_latent_dic)
+        res_route_mean, res_route_var, res_action = learner.get_output(state_dic, route_dic, global_latent_dic)
     res_route_std = np.sqrt(res_route_var)
-    res_action_std = np.sqrt(res_action_var)
-    a0 = np.mean(np.exp(- (res_action_mean ** 2) / res_action_std))
-    a1 = np.mean(np.exp(- ((res_action_mean - 1.) ** 2) / res_action_std))
-    a2 = np.mean(np.exp(- ((res_action_mean + 1.) ** 2) / res_action_std))
-    o_action[0] = a0 / (a0 + a1 + a2)
-    o_action[1] = a1 / (a0 + a1 + a2)
-    o_action[2] = a2 / (a0 + a1 + a2)
-    o_action[3] = np.mean(res_action_std)
-    o_action[4] = np.std(res_route_mean)
+    o_action[0] = res_action[:, 0]
+    o_action[1] = res_action[:, 1]
+    o_action[2] = res_action[:, 1]
+    o_action[3] = np.std(res_action)
     
     for i in range(action_len):
 
@@ -146,14 +139,14 @@ global_latent_len = 4
 num_of_agents = 4
 
 pkl_index = 0
-exp_index = 0
+exp_index = 1
 
 tf.disable_eager_execution()
 sess = tf.Session()
 with sess.as_default():
     learner = DrivingStyleLearner(state_len=state_len, nextstate_len=nextstate_len, route_len=route_len, action_len= action_len, istraining=False)
     learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
-    learner_saver.restore(sess, "train_log/DrivingStyle9_Bayesian_Latent/log_2023-09-14-23-40-35_60.ckpt")
+    learner_saver.restore(sess, "train_log/DrivingStyle10_Bayesian_Latent/log_2023-09-18-15-51-17_140.ckpt")
 
     with open("data/gathered_from_npc_batjeon6/data_" + str(pkl_index) + ".pkl","rb") as fr:
         data = pickle.load(fr)
@@ -168,7 +161,7 @@ with sess.as_default():
     lane_changing_state = [0 for _ in range(agent_count)]
 
     step_start_index = 200
-    step_count = len(state_vectors) - step_start_index - 150
+    step_count = 300#len(state_vectors) - step_start_index - 150
 
     for step in range(step_start_index, step_start_index+step_count):
         if step % 100 == 0:
@@ -181,15 +174,19 @@ with sess.as_default():
             y = state_vectors[step][i][1]
             yawsin = np.sin(state_vectors[step][i][2]  * -0.017453293)
             yawcos = np.cos(state_vectors[step][i][2]  * -0.017453293)
-            for j in range(agent_count):
-                if i != j:
-                    relposx = state_vectors[step][j][0] - x
-                    relposy = state_vectors[step][j][1] - y
-                    px, py = rotate(relposx, relposy, yawsin, yawcos)
-                    vx, vy = rotate(state_vectors[step][j][3], state_vectors[step][j][4], yawsin, yawcos)
-                    relyaw = (state_vectors[step][j][2] - state_vectors[step][i][2])   * 0.017453293
-                    other_vcs.append([px, py, np.cos(relyaw), np.sin(relyaw), vx, vy, np.sqrt(relposx * relposx + relposy * relposy)])
-            other_vcs = np.array(sorted(other_vcs, key=lambda s: s[6]))
+
+            distance_array = [(state_vectors[step][j][0] - x) ** 2 + (state_vectors[step][j][1] - y) ** 2 for j in range(agent_count)]
+            distance_indicies = np.array(distance_array).argsort()
+
+            other_vcs = []
+            for j in distance_indicies[1:9]:
+                relposx = state_vectors[step][j][0] - x
+                relposy = state_vectors[step][j][1] - y
+                px, py = rotate(relposx, relposy, yawsin, yawcos)
+                vx, vy = rotate(state_vectors[step][j][3], state_vectors[step][j][4], yawsin, yawcos)
+                relyaw = (state_vectors[step][j][2] - state_vectors[step][i][2])   * 0.017453293
+                other_vcs.append([px, py, np.cos(relyaw), np.sin(relyaw), vx, vy])
+
             velocity = np.sqrt(state_vectors[step][i][3] ** 2 + state_vectors[step][i][4] ** 2)
 
             nextstate = []  
@@ -237,12 +234,11 @@ with sess.as_default():
 
 
 
-            cur_history[i].append( [np.concatenate([[velocity, (1. if state_vectors[step][5] == 0. else 0.), px, py, control_vectors[step][i][1], lane_changing_state[i]], other_vcs[:8,:6].flatten()]), nextstate, route, trace_result, torque_added[i]])
+            cur_history[i].append( [np.concatenate([[velocity, (1. if state_vectors[step][5] == 0. else 0.), px, py, control_vectors[step][i][1], lane_changing_state[i]], np.array(other_vcs).flatten()]), nextstate, route, trace_result, torque_added[i]])
             if torque_added[i] > 0:
                 torque_added[i] -= 1
 
     global_latent_mu = [[] for _ in range(agent_count)]
-    global_latent_std = [[] for _ in range(agent_count)]
 
     for step in range(0, step_count):
         if step % 100 == 0:
@@ -257,14 +253,12 @@ with sess.as_default():
             route_dic.append(cur_history[x][step][2])
             action_dic.append(cur_history[x][step][3])
 
-        res_mu, res_var = learner.get_latent(state_dic, nextstate_dic, route_dic, action_dic)
+        res_mu = learner.get_latent(state_dic, nextstate_dic, route_dic, action_dic)
         for x in range(agent_count):
             if cur_history[x][step][4] == 0:
                 global_latent_mu[x].append(res_mu[x])
-                global_latent_std[x].append(np.sqrt(res_var[x]))
             else:
                 global_latent_mu[x].append(np.zeros((global_latent_len, )))
-                global_latent_std[x].append(np.ones((global_latent_len, )))
 
     server = VisualizeServer()
     server.handlers["curstate"] = SendCurstate

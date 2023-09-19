@@ -14,7 +14,7 @@ except IndexError:
 import tensorflow.compat.v1 as tf
 from laneinfo import LaneInfo
 from lanetrace import LaneTrace
-from network.DrivingStyle10_bayesian_latent import DrivingStyleLearner
+from network.DrivingStyle11_bayesian_latent import DrivingStyleLearner
 from datetime import datetime
 import numpy as np
 import pickle
@@ -26,7 +26,7 @@ import multiprocessing
 laneinfo = LaneInfo()
 laneinfo.Load_from_File("laneinfo_Batjeon.pkl")
 
-state_len = 54
+state_len = 53
 nextstate_len = 6
 route_len = 16
 action_len = 3
@@ -34,7 +34,7 @@ global_latent_len = 4
 num_of_agents = 4
 
 
-log_name = "train_log/DrivingStyle10_Bayesian_Latent/log_" + datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+log_name = "train_log/DrivingStyle11_Bayesian_Latent/log_" + datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 log_file = open(log_name + ".txt", "wt")
 
 def rotate(posx, posy, yawsin, yawcos):
@@ -58,7 +58,6 @@ def parallel_task(item):
     torque_added = [0 for _ in range(agent_count)]
     stepstart = random.randrange(50, 60)
     lane_tracers = [LaneTrace(laneinfo, 8) for _ in range(agent_count)]
-    lane_changing_state = [0 for _ in range(agent_count)]
     for step in range(stepstart, len(state_vectors)-150, 3):
         for i in range(agent_count):
             if torque_added[i] == 0:
@@ -113,21 +112,16 @@ def parallel_task(item):
                                 mindist = 99999
                                 for j, trace, c in zip(range(action_len), traced, tracec):
                                     if c:
-                                        dist = (trace[7][0] - state_vectors[step + 60][i][0]) ** 2 + (trace[7][1] - state_vectors[step + 60][i][1]) ** 2
+                                        dist = (trace[7][0] - state_vectors[step + 75][i][0]) ** 2 + (trace[7][1] - state_vectors[step + 75][i][1]) ** 2
                                         if dist < mindist:
                                             trace_result = j
                                             mindist = dist
-                                if trace_result != 0:
-                                    lane_changing_state[i] += 1
-                                else:
-                                    lane_changing_state[i] = 0
-
                                     
                                 px, py = 50., 0.
                                 for t in state_vectors[step][i][6]:
                                     if (px * px + py * py) >  ((t[0] - x) * (t[0] - x) + (t[1] - y) * (t[1] - y)):
                                         px, py = rotate(t[0] - x, t[1] - y, yawsin, yawcos)
-                                history_exp[i].append( [np.concatenate([[velocity, (1. if state_vectors[step][i][5] == 0. else 0.), px, py, control_vectors[step][i][1], lane_changing_state[i]], np.array(other_vcs).flatten()]), nextstate, route, trace_result])
+                                history_exp[i].append( [np.concatenate([[velocity, (1. if state_vectors[step][i][5] == 0. else 0.), px, py, control_vectors[step][i][1]], np.array(other_vcs).flatten()]), nextstate, route, trace_result])
             else:
                 torque_added[i] -= 1
     history = []
@@ -145,7 +139,6 @@ with sess.as_default():
         learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
         sess.run(tf.global_variables_initializer())
         learner.network_initialize()
-        learner_saver.restore(sess, "train_log/DrivingStyle10_Bayesian_Latent/log_2023-09-18-15-51-17_140.ckpt")
         log_file.write("Epoch" + learner.log_caption() + "\n")
 
         history = []

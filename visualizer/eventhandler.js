@@ -159,7 +159,6 @@ function OnLatentEndSliderChanged(event)
 
 function OnLatentSliderChanged(i)
 {
-    console.log(i)
     document.getElementById("value_l" + i).innerHTML = document.getElementById("slider_l" + i).value / 100
     if(clicked != -1)
     {
