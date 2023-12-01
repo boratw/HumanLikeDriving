@@ -26,7 +26,7 @@ import multiprocessing
 laneinfo = LaneInfo()
 laneinfo.Load_from_File("laneinfo_Batjeon.pkl")
 
-state_len = 53
+state_len = 63
 nextstate_len = 6
 route_len = 16
 action_len = 3
@@ -52,6 +52,7 @@ def parallel_task(item):
 
     state_vectors = item["state_vectors"]
     control_vectors = item["control_vectors"]
+    param_vectors = item["params"]
     agent_count = len(item["state_vectors"][0])
 
     history_exp = [[] for _ in range(agent_count)]
@@ -61,8 +62,8 @@ def parallel_task(item):
     for step in range(stepstart, len(state_vectors)-150, 3):
         for i in range(agent_count):
             if torque_added[i] == 0:
-                if control_vectors[step+45][i][0] != 0 or control_vectors[step+46][i][0] != 0 or control_vectors[step+47][i][0] != 0:
-                    torque_added[i] = 10
+                if control_vectors[step+60][i][0] != 0 or control_vectors[step+61][i][0] != 0 or control_vectors[step+62][i][0] != 0:
+                    torque_added[i] = 25
                 else:
                     other_vcs = []
                     x = state_vectors[step][i][0]
@@ -76,11 +77,12 @@ def parallel_task(item):
                         yawsin = np.sin(state_vectors[step][i][2]  * -0.017453293)
                         yawcos = np.cos(state_vectors[step][i][2]  * -0.017453293)
                         nextstate = []
-                        for j in range(0, 45, 15) :
-                            relposx = state_vectors[step + j + 15][i][0] - state_vectors[step + j][i][0]
-                            relposy = state_vectors[step + j + 15][i][1] - state_vectors[step + j][i][1]
+                        for j in range(0, 60, 20) :
+                            relposx = state_vectors[step + j + 20][i][0] - state_vectors[step + j][i][0]
+                            relposy = state_vectors[step + j + 20][i][1] - state_vectors[step + j][i][1]
                             px, py = rotate(relposx, relposy, yawsin, yawcos)
                             nextstate.extend([px, py])
+                        
 
                         if len(nextstate) == 6 and random.random() < ((abs(nextstate[1] + nextstate[3] + nextstate[5]) * 0.3333) ** 0.5 + 0.1):
                             traced, tracec = lane_tracers[i].Trace(x, y)
@@ -112,16 +114,19 @@ def parallel_task(item):
                                 mindist = 99999
                                 for j, trace, c in zip(range(action_len), traced, tracec):
                                     if c:
-                                        dist = (trace[7][0] - state_vectors[step + 45][i][0]) ** 2 + (trace[7][1] - state_vectors[step + 45][i][1]) ** 2
+                                        dist = (trace[7][0] - state_vectors[step + 60][i][0]) ** 2 + (trace[7][1] - state_vectors[step + 60][i][1]) ** 2
                                         if dist < mindist:
                                             trace_result = j
                                             mindist = dist
+                                
                                     
-                                px, py = 50., 0.
-                                for t in state_vectors[step][i][6]:
-                                    if (px * px + py * py) >  ((t[0] - x) * (t[0] - x) + (t[1] - y) * (t[1] - y)):
-                                        px, py = rotate(t[0] - x, t[1] - y, yawsin, yawcos)
-                                history_exp[i].append( [np.concatenate([[velocity, (1. if state_vectors[step][i][5] == 0. else 0.), px, py, control_vectors[step][i][1]], np.array(other_vcs).flatten()]), nextstate, route, trace_result])
+                                px, py = 100., 0.
+                                if state_vectors[step][i][5] == 0:
+                                    for t in state_vectors[step][i][6]:
+                                        if (px * px + py * py) >  ((t[0] - x) * (t[0] - x) + (t[1] - y) * (t[1] - y)):
+                                            px, py = rotate(t[0] - x, t[1] - y, yawsin, yawcos)
+                            history_exp[i].append( [np.concatenate([[velocity, (1. if state_vectors[step][i][5] == 0. else 0.), px, py], np.array(control_vectors[step][i][1:]),  
+                                                                         np.array(param_vectors[i]), np.array(other_vcs).flatten()]), nextstate, route, trace_result])
             else:
                 torque_added[i] -= 1
     history = []
@@ -135,11 +140,11 @@ sess = tf.Session()
 with sess.as_default():
     with multiprocessing.Pool(20) as pool:
         learner = DrivingStyleLearner(state_len=state_len, nextstate_len=nextstate_len, route_len=route_len, action_len= action_len,
-                                      num_of_agents=num_of_agents)
+                                      num_of_agents=num_of_agents, discrete_lr = 0.0001, latent_lr = 0.0001 )
         learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
         sess.run(tf.global_variables_initializer())
         learner.network_initialize()
-        learner_saver.restore(sess, "train_log/DrivingStyle11_Bayesian_Latent/log_2023-09-19-18-22-43_20.ckpt")
+        #learner_saver.restore(sess, "train_log/DrivingStyle11_Bayesian_Latent/log_2023-09-19-18-22-43_20.ckpt")
         log_file.write("Epoch" + learner.log_caption() + "\n")
 
         history = []

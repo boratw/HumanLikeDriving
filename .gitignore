@@ -3,3 +3,4 @@ __pycache__
 data
 train_log
 policy_test_log
+predict_test_log

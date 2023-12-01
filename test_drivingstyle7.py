@@ -13,7 +13,7 @@ except IndexError:
 import tensorflow.compat.v1 as tf
 from laneinfo import LaneInfo
 from lanetrace import LaneTrace
-from network.DrivingStyle10_bayesian_latent import DrivingStyleLearner
+from network.DrivingStyle11_bayesian_latent import DrivingStyleLearner
 from datetime import datetime
 import numpy as np
 import pickle
@@ -85,26 +85,25 @@ def SendOutput(list):
     o_action = [0.] * (action_len + 1)
     global_latent_dic = [[float(list[i + 1]) for i in range(4)] for _ in range(16) ]
     
-
-    traced, tracec = lane_tracers[target].Trace(x, y)
+    traced, tracec = lane_tracers[target].Trace(state_vectors[step_start_index + current_step][target][0], state_vectors[step_start_index + current_step][target][1])
 
     state_dic = [cur_history[target][current_step][0] for _ in range(16)]
     route_dic = [cur_history[target][current_step][2] for _ in range(16)]
     with sess.as_default():
         res_route_mean, res_route_var, res_action = learner.get_output(state_dic, route_dic, global_latent_dic)
     res_route_std = np.sqrt(res_route_var)
-    o_action[0] = res_action[:, 0]
-    if tracec[1] == True and tracec[2] == True:
-        o_action[1] = res_action[:, 1] / 2.
-        o_action[2] = res_action[:, 1] / 2.
-    elif tracec[1] == True and tracec[2] == False:
-        o_action[1] = res_action[:, 1]
-    elif tracec[1] == False and tracec[2] == True:
-        o_action[2] = res_action[:, 1]
-
+    o_action[0] = np.mean(res_action[:, 0])
+    o_action[1] = np.mean(res_action[:, 1])
+    o_action[2] = np.mean(res_action[:, 2])
     o_action[3] = np.std(res_action)
     
-    
+    if tracec[1] == False :
+        o_action[0] += o_action[1]
+        o_action[1] = 0.
+    if tracec[2] == False :
+        o_action[0] += o_action[2]
+        o_action[2] = 0.
+
     for i in range(action_len):
 
         o_mean =  np.mean(res_route_mean[:, i, :], axis=0)
@@ -137,7 +136,7 @@ ReadOption = { "LaneFollow" : [1., 0., 0.],
 laneinfo = LaneInfo()
 laneinfo.Load_from_File("laneinfo_Batjeon.pkl")
 
-state_len = 54
+state_len = 53
 nextstate_len = 6
 route_len = 16
 action_len = 3
@@ -152,7 +151,7 @@ sess = tf.Session()
 with sess.as_default():
     learner = DrivingStyleLearner(state_len=state_len, nextstate_len=nextstate_len, route_len=route_len, action_len= action_len, istraining=False)
     learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
-    learner_saver.restore(sess, "train_log/DrivingStyle10_Bayesian_Latent/log_2023-09-18-15-51-17_140.ckpt")
+    learner_saver.restore(sess, "train_log/DrivingStyle11_Bayesian_Latent/log_2023-09-19-18-22-43_100.ckpt")
 
     with open("data/gathered_from_npc_batjeon6/data_" + str(pkl_index) + ".pkl","rb") as fr:
         data = pickle.load(fr)
@@ -164,10 +163,9 @@ with sess.as_default():
     lane_tracers = [LaneTrace(laneinfo, 8) for _ in range(agent_count)]
     cur_history = [[] for _ in range(agent_count)]
     torque_added = [0 for _ in range(agent_count)]
-    lane_changing_state = [0 for _ in range(agent_count)]
 
     step_start_index = 200
-    step_count = 300#len(state_vectors) - step_start_index - 150
+    step_count = len(state_vectors) - step_start_index - 150
 
     for step in range(step_start_index, step_start_index+step_count):
         if step % 100 == 0:
@@ -229,18 +227,14 @@ with sess.as_default():
             mindist = 99999
             for j, trace, c in zip(range(action_len), traced, tracec):
                 if c:
-                    dist = (trace[7][0] - state_vectors[step + 60][i][0]) ** 2 + (trace[7][1] - state_vectors[step + 60][i][1]) ** 2
+                    dist = (trace[7][0] - state_vectors[step + 45][i][0]) ** 2 + (trace[7][1] - state_vectors[step + 45][i][1]) ** 2
                     if dist < mindist:
                         trace_result = j
                         mindist = dist
-            if trace_result != 0:
-                lane_changing_state[i] += 1
-            else:
-                lane_changing_state[i] = 0
 
 
 
-            cur_history[i].append( [np.concatenate([[velocity, (1. if state_vectors[step][5] == 0. else 0.), px, py, control_vectors[step][i][1], lane_changing_state[i]], np.array(other_vcs).flatten()]), nextstate, route, trace_result, torque_added[i]])
+            cur_history[i].append( [np.concatenate([[velocity, (1. if state_vectors[step][5] == 0. else 0.), px, py, control_vectors[step][i][1]], np.array(other_vcs).flatten()]), nextstate, route, trace_result, torque_added[i]])
             if torque_added[i] > 0:
                 torque_added[i] -= 1
 

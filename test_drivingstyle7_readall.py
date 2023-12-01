@@ -13,7 +13,7 @@ except IndexError:
 import tensorflow.compat.v1 as tf
 from laneinfo import LaneInfo
 from lanetrace import LaneTrace
-from network.DrivingStyle10_bayesian_latent import DrivingStyleLearner
+from network.DrivingStyle11_bayesian_latent import DrivingStyleLearner
 from datetime import datetime
 import numpy as np
 import pickle
@@ -73,52 +73,52 @@ def SendPredLatent(list):
         m /= d
     else:
         v = 1.
-    res = json.dumps({"mu" : m, "std" : [v] * action_len}, cls=MyEncoder)
+    res = {"mu" : m, "std" : [v] * action_len}
     return res
     
 
 def SendOutput(list):
     target = int(list[0])
-        
+    latent = SendPredLatent([target, current_step, current_step])
     d_state = [[state_vectors[step_start_index + current_step + j][target][0], state_vectors[step_start_index + current_step + j][target][1]] for j in range(0, 60, 15)]
     l_state = [ [[0., 0., 0., 0., 0., 0. ]] for j in range(action_len)]
     o_action = [0.] * (action_len + 1)
-    global_latent_dic = [[float(list[i + 1]) for i in range(4)] for _ in range(16) ]
+    global_latent_dic = [latent["mu"] for _ in range(16) ]
     
-
-    traced, tracec = lane_tracers[target].Trace(x, y)
+    traced, tracec = lane_tracers[target].Trace(state_vectors[step_start_index + current_step][target][0], state_vectors[step_start_index + current_step][target][1])
 
     state_dic = [cur_history[target][current_step][0] for _ in range(16)]
     route_dic = [cur_history[target][current_step][2] for _ in range(16)]
     with sess.as_default():
         res_route_mean, res_route_var, res_action = learner.get_output(state_dic, route_dic, global_latent_dic)
     res_route_std = np.sqrt(res_route_var)
-    o_action[0] = res_action[:, 0]
-    if tracec[1] == True and tracec[2] == True:
-        o_action[1] = res_action[:, 1] / 2.
-        o_action[2] = res_action[:, 1] / 2.
-    elif tracec[1] == True and tracec[2] == False:
-        o_action[1] = res_action[:, 1]
-    elif tracec[1] == False and tracec[2] == True:
-        o_action[2] = res_action[:, 1]
-
+    o_action[0] = np.mean(res_action[:, 0])
+    o_action[1] = np.mean(res_action[:, 1])
+    o_action[2] = np.mean(res_action[:, 2])
     o_action[3] = np.std(res_action)
     
-    
-    for i in range(action_len):
+    if tracec[1] == False :
+        o_action[0] += o_action[1]
+        o_action[1] = 0.
+    if tracec[2] == False :
+        o_action[0] += o_action[2]
+        o_action[2] = 0.
 
-        o_mean =  np.mean(res_route_mean[:, i, :], axis=0)
-        o_ep_var = np.mean(np.sqrt(res_route_std[:, i, :]), axis=0)
-        o_al_var = np.std(res_route_mean[:, i, :], axis=0)
-        x = 0.
-        y = 0.
-        for j in range(3):
-            x += o_mean[j * 2]
-            y += o_mean[j * 2 + 1]
-            l_state[i].append([float(x), float(y), float(np.sqrt(o_ep_var[j * 2])),
-                                float(np.sqrt(o_ep_var[j * 2 + 1])), float(np.sqrt(o_al_var[j * 2])), float(np.sqrt(o_al_var[j * 2 + 1]))])
+    i = np.argmax([o_action[0], o_action[1], o_action[2]])
+    
+    o_mean =  np.mean(res_route_mean[:, i, :], axis=0)
+    o_ep_var = np.mean(np.sqrt(res_route_std[:, i, :]), axis=0)
+    o_al_var = np.std(res_route_mean[:, i, :], axis=0)
+    x = 0.
+    y = 0.
+    l_state = []
+    for j in range(3):
+        x += o_mean[j * 2]
+        y += o_mean[j * 2 + 1]
+        l_state.append([float(x), float(y), float(np.sqrt(o_ep_var[j * 2])),
+                            float(np.sqrt(o_ep_var[j * 2 + 1])), float(np.sqrt(o_al_var[j * 2])), float(np.sqrt(o_al_var[j * 2 + 1]))])
         
-    res = json.dumps({"route" : d_state, "predicted" : l_state, "action_prob" : o_action}, cls=MyEncoder)
+    res = {"route" : d_state, "predicted" : l_state, "action_prob" : o_action}
     print("vehicle " + str(target) + " step " + str(current_step))
     return res
 
@@ -137,7 +137,7 @@ ReadOption = { "LaneFollow" : [1., 0., 0.],
 laneinfo = LaneInfo()
 laneinfo.Load_from_File("laneinfo_Batjeon.pkl")
 
-state_len = 54
+state_len = 53
 nextstate_len = 6
 route_len = 16
 action_len = 3
@@ -152,7 +152,7 @@ sess = tf.Session()
 with sess.as_default():
     learner = DrivingStyleLearner(state_len=state_len, nextstate_len=nextstate_len, route_len=route_len, action_len= action_len, istraining=False)
     learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
-    learner_saver.restore(sess, "train_log/DrivingStyle10_Bayesian_Latent/log_2023-09-18-15-51-17_140.ckpt")
+    learner_saver.restore(sess, "train_log/DrivingStyle11_Bayesian_Latent/log_2023-09-19-18-22-43_100.ckpt")
 
     with open("data/gathered_from_npc_batjeon6/data_" + str(pkl_index) + ".pkl","rb") as fr:
         data = pickle.load(fr)
@@ -164,10 +164,9 @@ with sess.as_default():
     lane_tracers = [LaneTrace(laneinfo, 8) for _ in range(agent_count)]
     cur_history = [[] for _ in range(agent_count)]
     torque_added = [0 for _ in range(agent_count)]
-    lane_changing_state = [0 for _ in range(agent_count)]
 
     step_start_index = 200
-    step_count = 300#len(state_vectors) - step_start_index - 150
+    step_count = len(state_vectors) - step_start_index - 150
 
     for step in range(step_start_index, step_start_index+step_count):
         if step % 100 == 0:
@@ -229,18 +228,14 @@ with sess.as_default():
             mindist = 99999
             for j, trace, c in zip(range(action_len), traced, tracec):
                 if c:
-                    dist = (trace[7][0] - state_vectors[step + 60][i][0]) ** 2 + (trace[7][1] - state_vectors[step + 60][i][1]) ** 2
+                    dist = (trace[7][0] - state_vectors[step + 45][i][0]) ** 2 + (trace[7][1] - state_vectors[step + 45][i][1]) ** 2
                     if dist < mindist:
                         trace_result = j
                         mindist = dist
-            if trace_result != 0:
-                lane_changing_state[i] += 1
-            else:
-                lane_changing_state[i] = 0
 
 
 
-            cur_history[i].append( [np.concatenate([[velocity, (1. if state_vectors[step][5] == 0. else 0.), px, py, control_vectors[step][i][1], lane_changing_state[i]], np.array(other_vcs).flatten()]), nextstate, route, trace_result, torque_added[i]])
+            cur_history[i].append( [np.concatenate([[velocity, (1. if state_vectors[step][5] == 0. else 0.), px, py, control_vectors[step][i][1]], np.array(other_vcs).flatten()]), nextstate, route, trace_result, torque_added[i]])
             if torque_added[i] > 0:
                 torque_added[i] -= 1
 
@@ -266,14 +261,38 @@ with sess.as_default():
             else:
                 global_latent_mu[x].append(np.zeros((global_latent_len, )))
 
-    server = VisualizeServer()
-    server.handlers["curstate"] = SendCurstate
-    server.handlers["expinfo"] = SendExpInfo
-    server.handlers["predictlatent"] = SendPredLatent
-    server.handlers["latents"] = SendLatents
-    server.handlers["predictroute"] = SendOutput
-    try:
-        while(True):
-            server.Receive()
-    finally:
-        server.Destroy()
+    for x in range(agent_count):
+        with open("readed_" + str(x) + ".tsv", "wt") as f:
+            f.write("""pos_x\tpos_y\t\
+gt_1_x\tgt_1_y\tgt_2_x\tgt_2_y\tgt_3_x\tgt_3_y\t\
+pred_1_x\tpred_1_y\tpred_2_x\tpred_2_y\tpred_3_x\tpred_3_y\t\
+ep_1_x\tep_1_y\tep_2_x\tep_2_y\tep_3_x\tep_3_y\t\
+al_1_x\tal_1_y\tal_2_x\tal_2_y\tal_3_x\tal_3_y
+""")
+            for current_step in range(0, step_count):
+                px = state_vectors[current_step][x][0]
+                py = state_vectors[current_step][x][1]
+                yawsin = np.sin(state_vectors[current_step][x][2]  * -0.017453293)
+                yawcos = np.cos(state_vectors[current_step][x][2]  * -0.017453293)
+
+                rx1 = state_vectors[current_step + 15][x][0] - px
+                ry1 = state_vectors[current_step + 15][x][1] - py
+                px1, py1 = rotate(rx1, ry1, yawsin, yawcos)
+
+                rx2 = state_vectors[current_step + 30][x][0] - px
+                ry2 = state_vectors[current_step + 30][x][1] - py
+                px2, py2 = rotate(rx2, ry2, yawsin, yawcos)
+
+                rx3 = state_vectors[current_step + 45][x][0] - px
+                ry3 = state_vectors[current_step + 45][x][1] - py
+                px3, py3 = rotate(rx3, ry3, yawsin, yawcos)
+                res=SendOutput([x])
+                f.write(f"""{px}\t{py}\t\
+{px1}\t{py1}\t{px2}\t{py2}\t{px3}\t{py3}\t\
+{res["predicted"][0][0]}\t{res["predicted"][0][1]}\t{res["predicted"][1][0]}\t{res["predicted"][1][1]}\t{res["predicted"][2][0]}\t{res["predicted"][2][1]}\t\
+{res["predicted"][0][2]}\t{res["predicted"][0][3]}\t{res["predicted"][1][2]}\t{res["predicted"][1][3]}\t{res["predicted"][2][2]}\t{res["predicted"][2][3]}\t\
+{res["predicted"][0][4]}\t{res["predicted"][0][5]}\t{res["predicted"][1][4]}\t{res["predicted"][1][5]}\t{res["predicted"][2][4]}\t{res["predicted"][2][5]}
+""")
+
+
+

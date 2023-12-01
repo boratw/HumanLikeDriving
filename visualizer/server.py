@@ -29,7 +29,8 @@ class VisualizeServer():
 
                 else:
                     self.SendFile("visualizer" + request[1])
-
+        except UnicodeDecodeError:
+            pass
         finally:
             self.client_socket.close()
         

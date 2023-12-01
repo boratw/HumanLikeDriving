@@ -13,7 +13,7 @@ except IndexError:
 import tensorflow.compat.v1 as tf
 from laneinfo import LaneInfo
 from lanetrace import LaneTrace
-from network.DrivingStyle10_bayesian_latent import DrivingStyleLearner
+from network.DrivingStyle11_bayesian_latent import DrivingStyleLearner
 from datetime import datetime
 import numpy as np
 import pickle
@@ -43,7 +43,7 @@ def SendCurstate(step):
     res = json.dumps({"state" : d_state})
 
     global current_step
-    current_step = step
+    current_step = step_start_index + step
     return res
 
 def SendExpInfo(nothing):
@@ -54,7 +54,7 @@ def SendExpInfo(nothing):
 
 def SendLatents(list):
     target = int(list[0])
-    o_mu = global_latent_mu[target]
+    o_mu = global_latent_vis[target]
     res = json.dumps({"mu" : o_mu}, cls=MyEncoder)
     return res
 
@@ -79,32 +79,33 @@ def SendPredLatent(list):
 
 def SendOutput(list):
     target = int(list[0])
-        
-    d_state = [[state_vectors[step_start_index + current_step + j][target][0], state_vectors[step_start_index + current_step + j][target][1]] for j in range(0, 60, 15)]
+    d_state = [[state_vectors[current_step + j][target][0], state_vectors[current_step + j][target][1]] for j in range(0, 80, 20)]
     l_state = [ [[0., 0., 0., 0., 0., 0. ]] for j in range(action_len)]
     o_action = [0.] * (action_len + 1)
-    global_latent_dic = [[float(list[i + 1]) for i in range(4)] for _ in range(16) ]
+    #global_latent_dic = [[float(list[i + 1]) for i in range(4)] for _ in range(16) ]
+    mu = global_latent_mu[target][current_step]
+    mu /= np.sqrt(np.sum(mu ** 2) / 4)
+    global_latent_dic = [mu for _ in range(16) ]
     
+    traced, tracec = lane_tracers[target].Trace(state_vectors[current_step][target][0], state_vectors[current_step][target][1])
 
-    traced, tracec = lane_tracers[target].Trace(x, y)
-
-    state_dic = [cur_history[target][current_step][0] for _ in range(16)]
-    route_dic = [cur_history[target][current_step][2] for _ in range(16)]
+    state_dic = [cur_history[target][current_step - step_start_index][0] for _ in range(16)]
+    route_dic = [cur_history[target][current_step - step_start_index][2] for _ in range(16)]
     with sess.as_default():
         res_route_mean, res_route_var, res_action = learner.get_output(state_dic, route_dic, global_latent_dic)
     res_route_std = np.sqrt(res_route_var)
-    o_action[0] = res_action[:, 0]
-    if tracec[1] == True and tracec[2] == True:
-        o_action[1] = res_action[:, 1] / 2.
-        o_action[2] = res_action[:, 1] / 2.
-    elif tracec[1] == True and tracec[2] == False:
-        o_action[1] = res_action[:, 1]
-    elif tracec[1] == False and tracec[2] == True:
-        o_action[2] = res_action[:, 1]
-
+    o_action[0] = np.mean(res_action[:, 0])
+    o_action[1] = np.mean(res_action[:, 1])
+    o_action[2] = np.mean(res_action[:, 2])
     o_action[3] = np.std(res_action)
     
-    
+    if tracec[1] == False :
+        o_action[0] += o_action[1]
+        o_action[1] = 0.
+    if tracec[2] == False :
+        o_action[0] += o_action[2]
+        o_action[2] = 0.
+
     for i in range(action_len):
 
         o_mean =  np.mean(res_route_mean[:, i, :], axis=0)
@@ -137,14 +138,14 @@ ReadOption = { "LaneFollow" : [1., 0., 0.],
 laneinfo = LaneInfo()
 laneinfo.Load_from_File("laneinfo_Batjeon.pkl")
 
-state_len = 54
+state_len = 63
 nextstate_len = 6
 route_len = 16
 action_len = 3
 global_latent_len = 4
 num_of_agents = 4
 
-pkl_index = 18
+pkl_index = 0
 exp_index = 1
 
 tf.disable_eager_execution()
@@ -152,22 +153,22 @@ sess = tf.Session()
 with sess.as_default():
     learner = DrivingStyleLearner(state_len=state_len, nextstate_len=nextstate_len, route_len=route_len, action_len= action_len, istraining=False)
     learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
-    learner_saver.restore(sess, "train_log/DrivingStyle10_Bayesian_Latent/log_2023-09-18-15-51-17_140.ckpt")
+    learner_saver.restore(sess, "train_log/DrivingStyle11_3_Bayesian_Latent/log_2023-11-21-17-49-04_140.ckpt")
 
-    with open("data/gathered_from_npc_batjeon6/data_" + str(pkl_index) + ".pkl","rb") as fr:
+    with open("data/gathered_from_npc_batjeon7/data_" + str(pkl_index) + ".pkl","rb") as fr:
         data = pickle.load(fr)
 
 
     state_vectors = data[exp_index]["state_vectors"]
     control_vectors = data[exp_index]["control_vectors"]
+    param_vectors = data[exp_index]["params"]
     agent_count = len(state_vectors[0])
     lane_tracers = [LaneTrace(laneinfo, 8) for _ in range(agent_count)]
     cur_history = [[] for _ in range(agent_count)]
     torque_added = [0 for _ in range(agent_count)]
-    lane_changing_state = [0 for _ in range(agent_count)]
 
     step_start_index = 200
-    step_count = 300#len(state_vectors) - step_start_index - 150
+    step_count = len(state_vectors) - step_start_index - 150
 
     for step in range(step_start_index, step_start_index+step_count):
         if step % 100 == 0:
@@ -196,9 +197,9 @@ with sess.as_default():
             velocity = np.sqrt(state_vectors[step][i][3] ** 2 + state_vectors[step][i][4] ** 2)
 
             nextstate = []  
-            for j in range(0, 45, 15) :
-                relposx = state_vectors[step + j + 15][i][0] - state_vectors[step + j][i][0]
-                relposy = state_vectors[step + j + 15][i][1] - state_vectors[step + j][i][1]
+            for j in range(0, 60, 20) :
+                relposx = state_vectors[step + j + 20][i][0] - state_vectors[step + j][i][0]
+                relposy = state_vectors[step + j + 20][i][1] - state_vectors[step + j][i][1]
 
                 px, py = rotate(relposx, relposy, yawsin, yawcos)
                 nextstate.extend([px, py]) 
@@ -220,33 +221,32 @@ with sess.as_default():
                         waypoints.extend([px, py])
                     route.append(waypoints)
                     
-            px, py = 50., 0.
-            for t in state_vectors[step][i][6]:
-                if np.sqrt(px * px + py * py) >  np.sqrt((t[0] - x) * (t[0] - x) + (t[1] - y) * (t[1] - y)):
-                    px, py = rotate(t[0] - x, t[1] - y, yawsin, yawcos)
+            px, py = 100., 0.
+            if state_vectors[step][i][5] == 0:
+                for t in state_vectors[step][i][6]:
+                    if (px * px + py * py) >  ((t[0] - x) * (t[0] - x) + (t[1] - y) * (t[1] - y)):
+                        px, py = rotate(t[0] - x, t[1] - y, yawsin, yawcos)
                     
             trace_result = 0
             mindist = 99999
             for j, trace, c in zip(range(action_len), traced, tracec):
                 if c:
-                    dist = (trace[7][0] - state_vectors[step + 60][i][0]) ** 2 + (trace[7][1] - state_vectors[step + 60][i][1]) ** 2
+                    dist = (trace[7][0] - state_vectors[step + 45][i][0]) ** 2 + (trace[7][1] - state_vectors[step + 45][i][1]) ** 2
                     if dist < mindist:
                         trace_result = j
                         mindist = dist
-            if trace_result != 0:
-                lane_changing_state[i] += 1
-            else:
-                lane_changing_state[i] = 0
 
 
 
-            cur_history[i].append( [np.concatenate([[velocity, (1. if state_vectors[step][5] == 0. else 0.), px, py, control_vectors[step][i][1], lane_changing_state[i]], np.array(other_vcs).flatten()]), nextstate, route, trace_result, torque_added[i]])
+            cur_history[i].append( [np.concatenate([[velocity, (1. if state_vectors[step][i][5] == 0. else 0.), px, py], np.array(control_vectors[step][i][1:]), np.array(param_vectors[i]), np.array(other_vcs).flatten()]), nextstate, route, trace_result, torque_added[i]])
             if torque_added[i] > 0:
                 torque_added[i] -= 1
 
     global_latent_mu = [[] for _ in range(agent_count)]
+    global_latent_vis = [[] for _ in range(agent_count)]
 
-    for step in range(0, step_count):
+
+    for step in range(step_count):
         if step % 100 == 0:
             print("Getting latent from step " + str(step))
         state_dic = []
@@ -261,10 +261,25 @@ with sess.as_default():
 
         res_mu = learner.get_latent(state_dic, nextstate_dic, route_dic, action_dic)
         for x in range(agent_count):
-            if cur_history[x][step][4] == 0:
-                global_latent_mu[x].append(res_mu[x])
-            else:
-                global_latent_mu[x].append(np.zeros((global_latent_len, )))
+            #if cur_history[x][step][4] == 0:
+            global_latent_mu[x].append(res_mu[x])
+            #else:
+            #    global_latent_mu[x].append(np.zeros((global_latent_len, )))
+    
+    for x in range(agent_count):
+        l = np.array(global_latent_mu[x])
+        global_latent_mu_sum = np.sqrt(np.sum(l ** 2, axis=0) / step_count)
+        l2 = l.copy()
+        for step in range(1, 21):
+            l2[step:] += l[:-step]
+        l = l2 / 20
+        for step in range(step_count):
+            l = global_latent_mu[x][step] / global_latent_mu_sum - global_latent_mu_sum
+            l[l > 1.] = (l[l > 1.] ** 0.5)
+            l[l < -1.] = -((-l[l < -1.]) ** 0.5)
+            global_latent_vis[x].append(l + global_latent_mu_sum)
+
+
 
     server = VisualizeServer()
     server.handlers["curstate"] = SendCurstate

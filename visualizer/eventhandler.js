@@ -2,6 +2,7 @@ let canvasmoving = false;
 let canvasmoved = false;
 let linechart = null;
 var latent_length=8;
+let playevent = null;
 
 function GenerateDocument()
 {
@@ -33,10 +34,10 @@ function GenerateDocument()
               },
               scales: {
                   y: {
-                      max: 4.,
-                      min: -4.,
+                      max: 1.5,
+                      min: -1.5,
                       ticks: {
-                          stepSize: 1
+                          stepSize: 0.5
                       }
                   },
                   x: {
@@ -71,6 +72,9 @@ function AssignEventHandlers()
     document.getElementById("button_d20").addEventListener("click", (event)=>{document.getElementById("textbox_step").value = (Number(current_step) - 20); OnStepTextChanged();})
     document.getElementById("button_i20").addEventListener("click", (event)=>{document.getElementById("textbox_step").value = (Number(current_step) + 20); OnStepTextChanged();})
     document.getElementById("button_i100").addEventListener("click", (event)=>{document.getElementById("textbox_step").value = (Number(current_step) + 100); OnStepTextChanged();})
+    document.getElementById("button_play").addEventListener("click", OnPlay)
+    document.getElementById("button_stop").addEventListener("click", OnStop)
+    document.getElementById("button_drawall").addEventListener("click", OnDrawAll)
 
     for(var i = 0; i < 8; ++i)
         document.getElementById("slider_l" + i).addEventListener("input", ((a)=>{return function(event){OnLatentSliderChanged(a);};})(i) )
@@ -162,7 +166,46 @@ function OnLatentSliderChanged(i)
     document.getElementById("value_l" + i).innerHTML = document.getElementById("slider_l" + i).value / 100
     if(clicked != -1)
     {
-        RequestOutput();
+        RequestOutput(clicked);
+
+    }
+}
+
+function OnPlay()
+{
+    if(playevent == null)
+    {
+        playevent = setInterval(PlayStep, 1000 )
+    }
+}
+function OnStop()
+{
+    if(playevent != null)
+    {
+        clearInterval(playevent)
+        playevent = null;
+    }
+}
+function PlayStep()
+{
+    document.getElementById("textbox_step").value = (Number(current_step) + 5);
+    document.getElementById("textbox_latentstart").value = 0;
+    document.getElementById("slider_latentstart").value = 0;
+    document.getElementById("textbox_latentend").value = document.getElementById("textbox_step").value;
+    OnStepTextChanged();
+    OnLatentEndTextChanged();
+    
+    if(document.getElementById("checkbox_center").checked)
+        CenterTarget();
+}
+
+function OnDrawAll()
+{
+    draw_all = true;
+    DrawCanvas();
+    for(var k = 0; k < vehicles.length; ++k)
+    {
+        RequestOutput(k);
 
     }
 }

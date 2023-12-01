@@ -15,6 +15,7 @@ const carla_y = 1350;
 const carla_rotate = 1.570796327;
 
 var clicked = -1;
+var draw_all = false;
 
 var current_step = 0;
 var vehicles = [];
@@ -22,9 +23,10 @@ var predicteds = [[]];
 var latent_predicted_mu = null;
 var latent_predicted_var = null;
 var latent_data = {};
-var latent_output = undefined;
+var latent_output = {};
+var latent_output_prob = {};
 var latent_idx = null;
-var real_output = undefined;
+var real_output = {};
 
 let draw_potential = false;
 
@@ -72,97 +74,114 @@ function DrawCanvas()
         drawctx.restore()
 
     }
-
-    drawctx.strokeStyle = "rgba(0, 255, 0)";
-    drawctx.lineWidth = 0.5;
-    if(real_output != undefined)
+    draw = []
+    if (draw_all)
     {
-        if(real_output.length > 1)
-        {
-            drawctx.beginPath();
-            drawctx.moveTo(real_output[0][0], real_output[0][1]);
-            for(var i = 1; i < real_output.length; ++i)
-            {
-                drawctx.lineTo(real_output[i][0], real_output[i][1]);
-            }
-            drawctx.stroke();
-
-        }
+        for(var k = 0; k < vehicles.length; ++k)
+            draw.push(k)
     }
-    if(latent_output != undefined && clicked != -1)
+    else if(clicked != -1)
     {
-        if(latent_output.length > 1)
+        draw.push(clicked)
+    }
+    for(c of draw)
+    {
+        drawctx.strokeStyle = "rgba(0, 255, 0)";
+        drawctx.lineWidth = 0.5;
+        if(c in real_output)
         {
-            v = vehicles[clicked];
-
-            drawctx.save()
-            drawctx.transform(1, 0, 0, 1, v[0], v[1])
-            drawctx.rotate(v[2])
-            for(var action = 0; action < latent_output.length; action++)
+            if(real_output[c].length > 1)
             {
-                l = latent_output[action]
-                prob = latent_output_prob[action][0]
-
-                drawctx.strokeStyle = "rgba(255, 0, 0, " + prob + ")";
-                drawctx.lineWidth = 0.2;
-
                 drawctx.beginPath();
-                drawctx.moveTo(l[0][0], l[0][1]);
-                for(var i = 1; i < l.length; ++i)
+                drawctx.moveTo(real_output[c][0][0], real_output[c][0][1]);
+                for(var i = 1; i < real_output[c].length; ++i)
                 {
-                    drawctx.lineTo(l[i][0], l[i][1]);
+                    drawctx.lineTo(real_output[c][i][0], real_output[c][i][1]);
                 }
                 drawctx.stroke();
-                
-                drawctx.strokeStyle = "rgba(255, 0, 0, " + prob + ")";
-                drawctx.lineWidth = 0.2;
-                for(var i = 1; i < l.length; ++i)
-                {
-                    drawctx.beginPath();
-                    drawctx.ellipse(l[i][0], l[i][1], l[i][3] * 5., l[i][3] * 5., 0, 0, 2 * Math.PI);
-                    drawctx.stroke();
-                }
-
-                drawctx.strokeStyle = "rgba(0, 0, 255, " + prob + ")";
-                for(var i = 1; i < l.length; ++i)
-                {
-                    drawctx.beginPath();
-                    drawctx.ellipse(l[i][0], l[i][1], l[i][5] * 5., l[i][5] * 5., 0, 0, 2 * Math.PI);
-                    drawctx.stroke();
-                }
-
-                
+    
             }
-            drawctx.strokeStyle = "rgb(255, 255, 0)";
-            drawctx.lineWidth = 0.2;
-            drawctx.beginPath();
-            drawctx.moveTo(-2.0, -2.0);
-            drawctx.lineTo(-4.0, -2.0);
-            drawctx.moveTo(-2.0, 0.0);
-            drawctx.lineTo(-4.0, 0.0);
-            drawctx.moveTo(-2.0, 2.0);
-            drawctx.lineTo(-4.0, 2.0);
-            drawctx.stroke();
-
-            mu = (latent_output_prob[2] - latent_output_prob[1]) * 2.
-            var1 = latent_output_prob[3] * 0.2
-
-            
-            
-            drawctx.strokeStyle = "rgb(255, 0, 0)";
-            drawctx.lineWidth = 0.5;
-            drawctx.beginPath();
-            drawctx.moveTo(-2.5, Math.max(mu - var1, -2));
-            drawctx.lineTo(-2.5, Math.min(mu + var1, 2));
-            drawctx.stroke();
-
-
-            drawctx.restore()
         }
+        if(c in latent_output)
+        {
+            if(latent_output[c].length > 1)
+            {
+                v = vehicles[c];
+    
+                drawctx.save()
+                drawctx.transform(1, 0, 0, 1, v[0], v[1])
+                drawctx.rotate(v[2])
+                for(var action = 0; action < latent_output[c].length; action++)
+                {
+                    l = latent_output[c][action]
+                    prob = Math.sqrt(latent_output_prob[c][action])
+    
+                    drawctx.strokeStyle = "rgba(255, 0, 0, " + prob + ")";
+                    drawctx.lineWidth = 0.2;
+    
+                    drawctx.beginPath();
+                    drawctx.moveTo(l[0][0], l[0][1]);
+                    for(var i = 1; i < l.length; ++i)
+                    {
+                        drawctx.lineTo(l[i][0], l[i][1]);
+                    }
+                    drawctx.stroke();
+                    
+                    drawctx.strokeStyle = "rgba(255, 0, 0, " + prob + ")";
+                    drawctx.lineWidth = 0.2;
+                    for(var i = 1; i < l.length; ++i)
+                    {
+                        rot = Math.atan2(l[i][0] - l[i-1][0], l[i][1] - l[i-1][1])
+                        drawctx.beginPath();
+                        drawctx.ellipse(l[i][0], l[i][1], l[i][3] * 0.5, l[i][2] * 0.5, -rot, 0, 2 * Math.PI);
+                        drawctx.stroke();
+                    }
+                    drawctx.strokeStyle = "rgba(0, 0, 255, " + prob + ")";
+                    for(var i = 1; i < l.length; ++i)
+                    {
+                        rot = Math.atan2(l[i][0] - l[i-1][0], l[i][1] - l[i-1][1])
+                        drawctx.beginPath();
+                        drawctx.ellipse(l[i][0], l[i][1], l[i][5] * 2.0, l[i][4] * 2.0, -rot, 0, 2 * Math.PI);
+                        drawctx.stroke();
+                    }
+                    
+    
+                    
+                }
+                
+                drawctx.strokeStyle = "rgb(255, 255, 0)";
+                drawctx.lineWidth = 0.2;
+                drawctx.beginPath();
+                drawctx.moveTo(-2.0, -2.0);
+                drawctx.lineTo(-4.0, -2.0);
+                drawctx.moveTo(-2.0, 0.0);
+                drawctx.lineTo(-4.0, 0.0);
+                drawctx.moveTo(-2.0, 2.0);
+                drawctx.lineTo(-4.0, 2.0);
+                drawctx.stroke();
+    
+                mu = (latent_output_prob[c][2] - latent_output_prob[c][1]) * 2.
+                var1 = latent_output_prob[c][3] * 0.2
+    
+                
+                drawctx.strokeStyle = "rgb(255, 0, 0)";
+                drawctx.lineWidth = 0.5;
+                drawctx.beginPath();
+                drawctx.moveTo(-2.5, Math.max(mu - 0.25, -2));
+                drawctx.lineTo(-2.5, Math.min(mu + 0.25, 2));
+                drawctx.stroke();
+    
+                
+    
+                drawctx.restore()
+            }
+        }
+
     }
 
     visctx.drawImage(drawctx.canvas, 0, 0);
 }
+
 
 function CanvasClick(x, y)
 {
@@ -186,6 +205,7 @@ function CanvasClick(x, y)
 
     if(clicked != -1)
     {
+        drawall = false;
         //document.getElementById("slider_impatience").value = impatiences[clicked]
         if(clicked in latent_data)
         {
@@ -198,5 +218,17 @@ function CanvasClick(x, y)
             RequestLatentData(clicked);
         }
     }
+    draw_all = false;
     DrawCanvas();
+}
+
+function CenterTarget()
+{
+    if(clicked != -1)
+    {
+
+        viewport_x = (vehicles[clicked][1] * carla_scale - carla_x) * viewport_scale + 320
+        viewport_y = 320  - (vehicles[clicked][0] * carla_scale + carla_y) * viewport_scale
+    }
+
 }

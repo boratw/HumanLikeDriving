@@ -7,7 +7,7 @@ function RequestCurrentMap()
         }
     };
     
-    xmlHttp2.open("GET", "/v/expinfo/", true);
+    xmlHttp2.open("GET", "/v/expinfo/", false);
     xmlHttp2.send();
 }
 
@@ -20,25 +20,36 @@ function RequestCurrentStep()
         }
     };
     
-    xmlHttp.open("GET", "/v/curstate/" + current_step, true);
+    xmlHttp.open("GET", "/v/curstate/" + current_step, false);
     xmlHttp.send();
-    if(clicked != -1)
-        RequestOutput();
+    if(draw_all)
+    {
+        for(var k = 0; k < vehicles.length; ++k)
+        {
+            RequestOutput(k, false);
+        }
+
+    }
+    else if(clicked != -1)
+        RequestOutput(clicked, false);
+    DrawCanvas();
 
 }
-function RequestOutput()
+function RequestOutput(target, draw=true)
 {
-    var xmlHttp = new XMLHttpRequest();
-    xmlHttp.onreadystatechange = function() {
-        if(this.status == 200 && this.readyState == this.DONE) {
-            HandleOutput(xmlHttp.responseText);            
-        }
-    };
-    url = "/v/predictroute/" + clicked + "/";
-    for(var i = 0; i < latent_length; ++i)
-        url += document.getElementById("value_l" + i).innerHTML + "/"
-    xmlHttp.open("GET", url, true);
-    xmlHttp.send();
+        var xmlHttp = new XMLHttpRequest();
+        xmlHttp.onreadystatechange = function() {
+            if(this.status == 200 && this.readyState == this.DONE) {
+                HandleOutput(target, xmlHttp.responseText);            
+            }
+        };
+        url = "/v/predictroute/" + target + "/";
+        for(var i = 0; i < latent_length; ++i)
+            url += document.getElementById("value_l" + i).innerHTML + "/"
+        xmlHttp.open("GET", url, false);
+        xmlHttp.send();
+        if(draw)
+            DrawCanvas()
 }
 function RequestLatentData(target)
 {
@@ -49,7 +60,7 @@ function RequestLatentData(target)
         }
     };
     url = "/v/latents/" + target + "/";
-    xmlHttp.open("GET", url, true);
+    xmlHttp.open("GET", url, false);
     xmlHttp.send();
 }
 function RequestLatentPredicted(target)
@@ -61,7 +72,7 @@ function RequestLatentPredicted(target)
         }
     };
     url = "/v/predictlatent/" + target + "/" + document.getElementById("textbox_latentstart").value + "/" + document.getElementById("textbox_latentend").value  + "/";
-    xmlHttp.open("GET", url, true);
+    xmlHttp.open("GET", url, false);
     xmlHttp.send();
 }
 
@@ -69,7 +80,6 @@ function HandleCurrentStep(response)
 {
     data = JSON.parse(response);
     vehicles = data["state"];
-    DrawCanvas();
 }
 
 function HandleCurrentExp(response)
@@ -97,13 +107,12 @@ function HandleCurrentExp(response)
     
 
 }
-function HandleOutput(response)
+function HandleOutput(target, response)
 {
     data = JSON.parse(response);
-    real_output = data["route"];
-    latent_output = data["predicted"];
-    latent_output_prob = data["action_prob"];
-    DrawCanvas();
+    real_output[target] = data["route"];
+    latent_output[target] = data["predicted"];
+    latent_output_prob[target] = data["action_prob"];
 }
 function HandleLatentData(c, response)
 {
@@ -150,8 +159,8 @@ function HandleLatentPredicted(c, response)
             slider = document.getElementById("slider_l" + i)
 
             mu = Math.round(latent_predicted_mu[i] * 100)
-            l = mu * 0.45 + 180 - latent_predicted_var[i] * 45
-            r = mu * 0.45 + 180 + latent_predicted_var[i] * 45
+            l = mu * 0.45 + 180 - Math.max(latent_predicted_var[i], 0.1) * 45
+            r = mu * 0.45 + 180 + Math.max(latent_predicted_var[i], 0.1) * 45
 
             if(l < 0)
                 l = 0
@@ -163,10 +172,10 @@ function HandleLatentPredicted(c, response)
                 r = 360
             box.style.left = l + "px"
             box.style.width = (r-l) + "px"
-            //document.getElementById("slider_l" + i).value = mu
-            //document.getElementById("value_l" + i).innerHTML = mu / 100
+            document.getElementById("slider_l" + i).value = mu
+            document.getElementById("value_l" + i).innerHTML = mu / 100
         }
-        RequestOutput();
+        RequestOutput(c);
     }
 
 }

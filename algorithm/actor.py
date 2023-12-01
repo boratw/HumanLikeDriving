@@ -193,8 +193,6 @@ class Actor(object):
             self.player = None
 
 
-        self.client.apply_batch([carla.command.DestroyActor(x) for x in self.npc_vehicle_list])
-
     @staticmethod
     def get_state_len():
         return 8

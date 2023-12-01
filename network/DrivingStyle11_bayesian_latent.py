@@ -171,7 +171,7 @@ class DrivingStyleLearner():
                     self.ls_decoder_input = tf.concat([self.all_route_input, self.ls_output_latent], axis=1)
                     self.ls_dec_h1 = Bayesian_FC(self.ls_decoder_input, state_len + action_len * route_len + latent_len, 256, 
                                             input_dropout = self.layer_input_dropout, output_nonln = tf.nn.leaky_relu, name="ls_dec_h1")
-                    self.ls_action = FC(self.ls_dec_h1.layer_output, 256, 2, input_dropout = None, 
+                    self.ls_action = FC(self.ls_dec_h1.layer_output, 256, action_len, input_dropout = None, 
                                         output_nonln = None, name="ls_action")
                     self.ls_dec_h2 = [Bayesian_FC(self.ls_dec_h1.layer_output, 256, 128, input_dropout = self.layer_input_dropout, 
                                         output_nonln = tf.nn.leaky_relu, name="ls_dec_h2_" + str(i)) for i in range(action_len)]
@@ -181,7 +181,7 @@ class DrivingStyleLearner():
                     self.ls_infer_decoder_input = tf.concat([self.all_route_input, self.layer_input_latent], axis=1)
                     self.ls_infer_dec_h1 = Bayesian_FC(self.ls_infer_decoder_input, state_len + action_len * route_len + latent_len, 256, 
                                             input_dropout = self.layer_input_dropout, output_nonln = tf.nn.leaky_relu, name="ls_dec_h1", reuse=True)
-                    self.ls_infer_action = FC(self.ls_infer_dec_h1.layer_output, 256, 2, input_dropout = None, 
+                    self.ls_infer_action = FC(self.ls_infer_dec_h1.layer_output, 256, action_len, input_dropout = None, 
                                         output_nonln = None, name="ls_action", reuse=True)
                     self.ls_infer_dec_h2 = [Bayesian_FC(self.ls_infer_dec_h1.layer_output, 256, 128, input_dropout = self.layer_input_dropout, 
                                         output_nonln = tf.nn.leaky_relu, name="ls_dec_h2_" + str(i), reuse=True ) for i in range(action_len)]
@@ -189,10 +189,10 @@ class DrivingStyleLearner():
                                         output_nonln = None, name="ls_diff_" + str(i), reuse=True) for i in range(action_len)]
                     
 
-                    self.ls_infer_output_diff = tf.stack([self.ls_infer_diff[i].mu for i in range(action_len)], axis=1)
+                    self.ls_infer_output_diff = tf.stack([self.ls_infer_diff[i].layer_output for i in range(action_len)], axis=1)
 
-                    self.output_route_mean = self.dsc_output_route# - self.ls_infer_output_diff
-                    self.output_route_var = tf.stack([self.ls_infer_diff[i].var for i in range(action_len)], axis=1)
+                    self.output_route_mean = self.dsc_output_route - self.ls_infer_output_diff
+                    self.output_route_var = tf.stack([self.ls_infer_dec_h2[i].layer_var for i in range(action_len)], axis=1)
 
                     self.output_action = tf.nn.softmax(self.ls_infer_action.layer_output, axis=1)
 
@@ -208,7 +208,7 @@ class DrivingStyleLearner():
         self.log_latent_mean = np.array([0.] * self.latent_len)
         self.log_latent_rec = np.array([0.] * self.nextstate_len)
         self.log_latent_action_loss = 0.
-        self.log_latent_action_mean = np.array([0., 0.])
+        self.log_latent_action_mean = np.array([0.] * self.action_len)
         self.log_latent_merge_loss = 0.
         self.log_latent_diverse = 0.
         self.log_latent_reg = 0.
@@ -224,7 +224,7 @@ class DrivingStyleLearner():
         self.log_latent_mean = np.array([0.] * self.latent_len)
         self.log_latent_rec = np.array([0.] * self.nextstate_len)
         self.log_latent_action_loss = 0.
-        self.log_latent_action_mean = np.array([0., 0.])
+        self.log_latent_action_mean = np.array([0.] * self.action_len)
         self.log_latent_reg = 0.
         self.log_latent_diverse = np.array([0.] * self.latent_len)
         self.log_disc_rec = np.array([0.] * self.nextstate_len)
@@ -260,12 +260,12 @@ class DrivingStyleLearner():
 
     def get_latent(self, input_state, input_nextstate, input_route, input_action):
         input_list = {self.layer_input_state : input_state, self.layer_input_nextstate: input_nextstate, self.layer_input_route : input_route,
-                      self.layer_input_action : input_action, self.layer_input_dropout : 0.}
+                      self.layer_input_action : input_action, self.layer_input_dropout : 0.1}
         sess = tf.get_default_session()
         l1 = sess.run(self.ls_latent.layer_output, input_list)
         return l1
     
-    def get_output(self, input_state, input_route, input_latent, input_dropout=0.0):
+    def get_output(self, input_state, input_route, input_latent, input_dropout=0.1):
         input_list = {self.layer_input_state : input_state, self.layer_input_route : input_route, self.layer_input_latent : input_latent,
                       self.layer_input_dropout : input_dropout}
         sess = tf.get_default_session()
@@ -280,7 +280,7 @@ class DrivingStyleLearner():
         return "\t" + self.name + "_LatentMean\t" + "\t".join([ "" for _ in range(self.latent_len)]) \
             + self.name + "_LatentReconLoss\t" + "\t".join([ "" for _ in range(self.nextstate_len)]) \
             + self.name + "_LatentActionLoss\t"  \
-            + self.name + "_LatentActionMean\t\t"  \
+            + self.name + "_LatentActionMean\t\t"  + "\t".join([ "" for _ in range(self.action_len)]) \
             + self.name + "_LatentDiverse\t"  + "\t".join([ "" for _ in range(self.latent_len)]) \
             + self.name + "_LatentRegLoss\t"  \
             + self.name + "_DiscReconLoss\t" + "\t".join([ "" for _ in range(self.nextstate_len)]) \
@@ -291,7 +291,7 @@ class DrivingStyleLearner():
         return "\t" + "\t".join([str(self.log_latent_mean[i] / log_num) for i in range(self.latent_len)]) + "\t"\
             + "\t".join([str(self.log_latent_rec[i] / log_num) for i in range(self.nextstate_len)]) + "\t"\
             + str(self.log_latent_action_loss / log_num) + "\t"\
-            + "\t".join([str(self.log_latent_action_mean[i] / log_num) for i in range(2)]) + "\t"\
+            + "\t".join([str(self.log_latent_action_mean[i] / log_num) for i in range(self.action_len)]) + "\t"\
             + "\t".join([str(self.log_latent_diverse[i] / log_num) for i in range(self.latent_len)]) + "\t"\
             + str(self.log_latent_reg / log_num) + "\t"\
             + "\t".join([str(self.log_disc_rec[i] / log_num) for i in range(self.nextstate_len)]) + "\t"\
@@ -303,7 +303,7 @@ class DrivingStyleLearner():
             + "\n\tLatentMean          : " + " ".join([str(self.log_latent_mean[i] / log_num)[:8] for i in range(self.latent_len)]) \
             + "\n\tLatentReconLoss     : " + " ".join([str(self.log_latent_rec[i] / log_num)[:8] for i in range(self.nextstate_len)]) \
             + "\n\tLatentActionLoss    : " + str(self.log_latent_action_loss / log_num) \
-            + "\n\tLatentActionMean    : " + " ".join([str(self.log_latent_action_mean[i] / log_num)[:8] for i in range(2)]) \
+            + "\n\tLatentActionMean    : " + " ".join([str(self.log_latent_action_mean[i] / log_num)[:8] for i in range(self.action_len)]) \
             + "\n\tLatentDiverse       : " + " ".join([str(self.log_latent_diverse[i] / log_num)[:8] for i in range(self.latent_len)]) \
             + "\n\tLatentRegLoss       : " + str(self.log_latent_reg / log_num) \
             + "\n\tDiscReconLoss       : " + " ".join([str(self.log_disc_rec[i] / log_num)[:8] for i in range(self.nextstate_len)]) \
