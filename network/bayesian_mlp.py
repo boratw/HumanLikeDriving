@@ -17,16 +17,15 @@ class Bayesian_FC:
             logsig_b = tf.get_variable("logsig_b", shape=[output_dim], dtype=tf.float32, 
                 initializer=tf.random_uniform_initializer(-1.0 / math.sqrt(output_dim), 1.0 / math.sqrt(output_dim), dtype=tf.float32), trainable=True)
             
-            noise_w = tf.random.normal([input_dim, output_dim])
-            noise_b = tf.random.normal([output_dim])
 
-            sig_w = tf.exp(tf.clip_by_value(logsig_w + sigma_bias, clip_min, clip_max))
-            sig_b = tf.exp(tf.clip_by_value(logsig_b + sigma_bias, clip_min, clip_max))
+            sig_w = tf.exp(tf.clip_by_value(logsig_w, clip_min, clip_max) + sigma_bias)
+            sig_b = tf.exp(tf.clip_by_value(logsig_b, clip_min, clip_max) + sigma_bias)
 
-            w = mu_w + sig_w * noise_w
-            b = mu_b + sig_b * noise_b
+            dist_w = tf.distributions.Normal(mu_w, sig_w)
+            dist_b = tf.distributions.Normal(mu_b, sig_b)
+            dist_prior = tf.distributions.Normal(tf.zeros_like(mu_w), tf.exp(tf.zeros_like(sig_w) + sigma_bias))
 
-            out = (tf.matmul(input_tensor, w) + b) / (input_dim ** 0.5)
+            out = tf.matmul(input_tensor, dist_w.sample()) / (input_dim ** 0.5) + dist_b.sample()
             if input_dropout != None:
                 out = tf.nn.dropout(out, rate=input_dropout)
 
@@ -37,9 +36,10 @@ class Bayesian_FC:
 
             
             self.layer_output = out
-            self.layer_mean = (tf.matmul(input_tensor, mu_w) + mu_b) / (input_dim ** 0.5)
-            self.layer_var = (tf.matmul(input_tensor ** 2, sig_w ** 2) + sig_b ** 2 ) / (input_dim ** 0.5)
-            self.regularization_loss = tf.reduce_mean(mu_w ** 2 + logsig_w ** 2) + tf.reduce_mean(mu_b ** 2 + logsig_b ** 2)
+            self.layer_mean = tf.matmul(input_tensor, mu_w) / (input_dim ** 0.5) + mu_b 
+            self.layer_var = tf.matmul(input_tensor ** 2, sig_w ** 2)  / (input_dim ** 0.5) + sig_b ** 2
+
+            self.regularization_loss = tf.reduce_mean(dist_w.kl_divergence(dist_prior)) + tf.reduce_mean(dist_b.kl_divergence(dist_prior))
             self.trainable_params = tf.trainable_variables(scope=tf.get_variable_scope().name)
 
 
@@ -53,7 +53,7 @@ class FC:
                 initializer=tf.random_uniform_initializer(-1.0 / math.sqrt(output_dim), 1.0 / math.sqrt(output_dim), dtype=tf.float32), trainable=True)
 
 
-            out = (tf.matmul(input_tensor, w) + b) / (input_dim ** 0.5)
+            out = tf.matmul(input_tensor, w) / (input_dim ** 0.5) + b
             if input_dropout != None:
                 out = tf.nn.dropout(out, rate=input_dropout)
 
@@ -68,7 +68,8 @@ class FC:
             self.regularization_loss = tf.reduce_mean(w ** 2 + b ** 2)
 
 class Variational_FC:
-    def __init__(self, input_tensor, input_dim, output_dim, input_dropout= None, output_nonln=None, name=None, reuse=False, sigma_bias=-2.0):
+    def __init__(self, input_tensor, input_dim, output_dim, input_dropout= None, output_nonln=None, name=None, reuse=False, 
+                 clip_min = -10.0, clip_max = 1.0, sigma_bias=-2.0):
         
         with tf.variable_scope(name, reuse=reuse):
             w = tf.get_variable("w", shape=[input_dim, output_dim * 2], dtype=tf.float32, 
@@ -78,6 +79,14 @@ class Variational_FC:
 
 
             out = (tf.matmul(input_tensor, w) + b) / (input_dim ** 0.5)
+
+            self.mu, self.logsig = tf.split(out, 2, axis=1)
+            self.sig = tf.exp(tf.clip_by_value(self.logsig, clip_min, clip_max) + sigma_bias)
+
+            self.dist = tf.distributions.Normal(self.mu, self.sig)
+            self.dist_prior = tf.distributions.Normal(tf.zeros_like(self.mu), tf.exp(tf.zeros_like(self.sig) + sigma_bias))
+
+            out = self.dist.sample()
             if input_dropout != None:
                 out = tf.nn.dropout(out, rate=input_dropout)
 
@@ -86,14 +95,7 @@ class Variational_FC:
             elif output_nonln != None:
                 out = output_nonln(out)
 
-            self.mu, logsig = tf.split(out, 2, axis=1)
-            self.logsig = tf.clip_by_value(logsig, -10, 2) + sigma_bias
-            self.sig = tf.exp(self.logsig)
-
-            noise = tf.random.normal(tf.shape(self.mu))
-            
-            self.layer_output = self.mu + self.sig * noise
+            self.layer_output = out
             self.var = self.sig ** 2
-            self.regularization_loss = tf.reduce_mean(w ** 2 + b ** 2)
-
+            self.regularization_loss = tf.reduce_mean(self.dist.kl_divergence(self.dist_prior))
             self.trainable_params = tf.trainable_variables(scope=tf.get_variable_scope().name)

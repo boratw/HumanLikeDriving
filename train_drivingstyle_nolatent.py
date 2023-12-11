@@ -14,7 +14,7 @@ except IndexError:
 import tensorflow.compat.v1 as tf
 from laneinfo import LaneInfo
 from lanetrace import LaneTrace
-from network.DrivingStyle_Latent import DrivingStyleLearner
+from network.DrivingStyle_Nolatent import DrivingStyleLearner
 from datetime import datetime
 import numpy as np
 import pickle
@@ -29,12 +29,11 @@ laneinfo = LaneInfo()
 laneinfo.Load_from_File("laneinfo_Batjeon.pkl")
 
 state_len = 83
-prevstate_len = 6
 nextstate_len = 6
 agent_num = 100
 action_len = 31
 
-log_name = "train_log/DrivingStyle_Latent3/log_" + datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+log_name = "train_log/DrivingStyle_Latent/log_" + datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 log_file = open(log_name + ".txt", "wt")
 
 def rotate(posx, posy, yawsin, yawcos):
@@ -108,6 +107,11 @@ def parallel_task(item):
                                 waypoints.extend([px, py])
                             route.append(waypoints)
 
+                        px, py = 100., 0.
+                        if state_vectors[step][i][5] == 0:
+                            for t in state_vectors[step][i][6]:
+                                if (px * px + py * py) >  ((t[0] - x) * (t[0] - x) + (t[1] - y) * (t[1] - y)):
+                                    px, py = rotate(t[0] - x, t[1] - y, yawsin, yawcos)
 
                         action = 0.
                         px, py = 0., 0.
@@ -121,12 +125,6 @@ def parallel_task(item):
                             px = nextstate[j * 2 + 1]
                             py = nextstate[j * 2]
 
-                        px, py = 100., 0.
-                        if state_vectors[step][i][5] == 0:
-                            for t in state_vectors[step][i][6]:
-                                if (px * px + py * py) >  ((t[0] - x) * (t[0] - x) + (t[1] - y) * (t[1] - y)):
-                                    px, py = rotate(t[0] - x, t[1] - y, yawsin, yawcos)
-                                    
                         action = round(action * 15) + 15
                         if action < 0:
                             action = 0
@@ -139,7 +137,7 @@ def parallel_task(item):
 tf.disable_eager_execution()
 sess = tf.Session()
 with sess.as_default():
-    learner = DrivingStyleLearner(state_len=state_len, prevstate_len=prevstate_len, nextstate_len=nextstate_len, action_len=action_len)
+    learner = DrivingStyleLearner(state_len=state_len, nextstate_len=nextstate_len, action_len=action_len)
     learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
     sess.run(tf.global_variables_initializer())
     learner.network_initialize()
@@ -177,12 +175,11 @@ with sess.as_default():
                     step_dic = random.sample(range(len(cur_history)), 64)
 
                     state_dic.extend([cur_history[step][0] for step in step_dic])
-                    prevstate_dic.extend([cur_history[step][1] for step in step_dic])
                     nextstate_dic.extend([cur_history[step][2] for step in step_dic])
                     action_dic.extend([cur_history[step][3] for step in step_dic])
-                learner.optimize(state_dic, prevstate_dic, nextstate_dic, action_dic)
+                learner.optimize(state_dic, nextstate_dic, action_dic)
             learner.log_print()
-            log_file.write(str(epoch) + learner.current_log() + "\n")
+            log_file.write(str(epoch) + "\t" + learner.current_log() + "\n")
             log_file.flush()
             learner.network_update()
 

@@ -102,7 +102,10 @@ class LaneTrace(object):
                     output[0].append([l1["pos"][i1][0], l1["pos"][i1][1]])
                     i1 += 2
                 else:
-                    output[0].append([x, y])
+                    if len(output[0]) > 0:
+                        output[0].append(output[0][-1])
+                    else:
+                        output[0].append([x, y])
 
                 if l2 != None:
                     if i2 >= len(l2["pos"]):
@@ -117,7 +120,11 @@ class LaneTrace(object):
                     output[1].append([l2["pos"][i2][0], l2["pos"][i2][1]])
                     i2 += 2
                 else:
-                    output[1].append([x, y])
+                    if len(output[1]) > 0:
+                        output[1].append(output[1][-1])
+                    else:
+                        output[1].append([x, y])
+
 
                 if l3 != None:
                     if i3 >= len(l3["pos"]):
@@ -132,7 +139,11 @@ class LaneTrace(object):
                     output[2].append([l3["pos"][i3][0], l3["pos"][i3][1]])
                     i3 += 2
                 else:
-                    output[2].append([x, y])
+                    if len(output[2]) > 0:
+                        output[2].append(output[2][-1])
+                    else:
+                        output[2].append([x, y])
+
 
             return output, [l != None for l in [l1, l2, l3]]
         else:

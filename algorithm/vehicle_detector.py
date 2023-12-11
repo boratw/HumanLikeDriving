@@ -62,85 +62,50 @@ def detect_vehicles(actor, map, route, others, max_distance, up_angle_th=90, low
     
 
     ego_transform = actor.get_transform()
-    ego_wpt = map.get_waypoint(actor.get_location())
-
-    # Get the right offset
-    if ego_wpt.lane_id < 0 and lane_offset != 0:
-        lane_offset *= -1
-
-    # Get the transform of the front of the ego
-    ego_forward_vector = ego_transform.get_forward_vector()
-    ego_extent = actor.bounding_box.extent.x
-    ego_front_transform = ego_transform
-    ego_front_transform.location += carla.Location(
-        x=ego_extent * ego_forward_vector.x,
-        y=ego_extent * ego_forward_vector.y,
-    )
 
     for target_vehicle in others:
-        target_transform = target_vehicle.get_transform()
-        target_wpt = map.get_waypoint(target_transform.location, lane_type=carla.LaneType.Any)
+        route_bb = []
+        ego_location = ego_transform.location
+        extent_y = actor.bounding_box.extent.y
+        r_vec = ego_transform.get_right_vector()
+        #p1 = ego_location + carla.Location(extent_y * r_vec.x, extent_y * r_vec.y)
+        #p2 = ego_location + carla.Location(-extent_y * r_vec.x, -extent_y * r_vec.y)
+        #route_bb.append([p1.x, p1.y, p1.z])
+        #route_bb.append([p2.x, p2.y, p2.z])
 
-        # Simplified version for outside junctions
-        if not ego_wpt.is_junction or not target_wpt.is_junction:
+        for wp, roadoption in route:
+            tr = wp.transform
+            if ego_location.distance(tr.location) > max_distance:
+                break
 
-            if target_wpt.road_id != ego_wpt.road_id or target_wpt.lane_id != ego_wpt.lane_id  + lane_offset:
-                continue
-
-            target_forward_vector = target_transform.get_forward_vector()
-            target_extent = target_vehicle.bounding_box.extent.x
-            target_rear_transform = target_transform
-            target_rear_transform.location -= carla.Location(
-                x=target_extent * target_forward_vector.x,
-                y=target_extent * target_forward_vector.y,
-            )
-
-            if is_within_distance(target_rear_transform, ego_front_transform, max_distance, [low_angle_th, up_angle_th]):
-                return (True, target_vehicle, compute_distance(target_transform.location, ego_transform.location))
-
-        # Waypoints aren't reliable, check the proximity of the vehicle to the route
-        else:
-            route_bb = []
-            ego_location = ego_transform.location
-            extent_y = actor.bounding_box.extent.y
-            r_vec = ego_transform.get_right_vector()
-            p1 = ego_location + carla.Location(extent_y * r_vec.x, extent_y * r_vec.y)
-            p2 = ego_location + carla.Location(-extent_y * r_vec.x, -extent_y * r_vec.y)
+            r_vec = tr.get_right_vector()
+            p1 = tr.location + carla.Location(extent_y * r_vec.x, extent_y * r_vec.y)
+            p2 = tr.location + carla.Location(-extent_y * r_vec.x, -extent_y * r_vec.y)
             route_bb.append([p1.x, p1.y, p1.z])
             route_bb.append([p2.x, p2.y, p2.z])
 
-            for tr in route:
-                if ego_location.distance(tr.location) > max_distance:
-                    break
-
-                r_vec = tr.get_right_vector()
-                p1 = tr.location + carla.Location(extent_y * r_vec.x, extent_y * r_vec.y)
-                p2 = tr.location + carla.Location(-extent_y * r_vec.x, -extent_y * r_vec.y)
-                route_bb.append([p1.x, p1.y, p1.z])
-                route_bb.append([p2.x, p2.y, p2.z])
-
-            if len(route_bb) < 3:
-                # 2 points don't create a polygon, nothing to check
-                return (False, None, -1)
-            ego_polygon = Polygon(route_bb)
-
-            # Compare the two polygons
-            for target_vehicle in others:
-                target_extent = target_vehicle.bounding_box.extent.x
-                if target_vehicle.id == actor.id:
-                    continue
-                if ego_location.distance(target_vehicle.get_location()) > max_distance:
-                    continue
-
-                target_bb = target_vehicle.bounding_box
-                target_vertices = target_bb.get_world_vertices(target_vehicle.get_transform())
-                target_list = [[v.x, v.y, v.z] for v in target_vertices]
-                target_polygon = Polygon(target_list)
-
-                if ego_polygon.intersects(target_polygon):
-                    return (True, target_vehicle, compute_distance(target_vehicle.get_location(), ego_location))
-
+        if len(route_bb) < 3:
+            # 2 points don't create a polygon, nothing to check
             return (False, None, -1)
+        ego_polygon = Polygon(route_bb)
+
+        # Compare the two polygons
+        for target_vehicle in others:
+            target_extent = target_vehicle.bounding_box.extent.x
+            if target_vehicle.id == actor.id:
+                continue
+            if ego_location.distance(target_vehicle.get_location()) > max_distance:
+                continue
+
+            target_bb = target_vehicle.bounding_box
+            target_vertices = target_bb.get_world_vertices(target_vehicle.get_transform())
+            target_list = [[v.x, v.y, v.z] for v in target_vertices]
+            target_polygon = Polygon(target_list)
+
+            if ego_polygon.intersects(target_polygon):
+                return (True, target_vehicle, compute_distance(target_vehicle.get_location(), ego_location))
+
+        return (False, None, -1)
 
     return (False, None, -1)
 

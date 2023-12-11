@@ -40,7 +40,9 @@ function RequestOutput(target, draw=true)
         var xmlHttp = new XMLHttpRequest();
         xmlHttp.onreadystatechange = function() {
             if(this.status == 200 && this.readyState == this.DONE) {
-                HandleOutput(target, xmlHttp.responseText);            
+                HandleOutput(target, xmlHttp.responseText);  
+                if(draw)
+                    DrawCanvas()          
             }
         };
         url = "/v/predictroute/" + target + "/";
@@ -48,8 +50,6 @@ function RequestOutput(target, draw=true)
             url += document.getElementById("value_l" + i).innerHTML + "/"
         xmlHttp.open("GET", url, false);
         xmlHttp.send();
-        if(draw)
-            DrawCanvas()
 }
 function RequestLatentData(target)
 {
@@ -116,7 +116,7 @@ function HandleOutput(target, response)
 }
 function HandleLatentData(c, response)
 {
-    
+    /*
     j = JSON.parse(response);
     datalist = [];
     const bordercolors = ["#1e90ff", "#ff1493", "#228b22", "#daa520", "#4B0082", "#4169E1", "#008B8B", "#006400"]
@@ -143,11 +143,13 @@ function HandleLatentData(c, response)
 
         RequestLatentPredicted(c);
     }
+    */
+    RequestOutput(c);
 }
 
 function HandleLatentPredicted(c, response)
 {
-     
+     /*
     if(clicked == c)
     {
         data = JSON.parse(response);
@@ -176,6 +178,7 @@ function HandleLatentPredicted(c, response)
             document.getElementById("value_l" + i).innerHTML = mu / 100
         }
         RequestOutput(c);
-    }
+    }*/
+    RequestOutput(c);
 
 }

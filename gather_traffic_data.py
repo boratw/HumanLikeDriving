@@ -1,13 +1,3 @@
-#!/usr/bin/env python
-
-# Copyright (c) 2021 Computer Vision Center (CVC) at the Universitat Autonoma de
-# Barcelona (UAB).
-#
-# This work is licensed under the terms of the MIT license.
-# For a copy, see <https://opensource.org/licenses/MIT>.
-
-"""Example script to generate traffic in the simulation"""
-
 import glob
 import os
 import sys
@@ -24,9 +14,11 @@ except IndexError:
 import carla
 
 import numpy as np
+from collections import deque
 
 from carla import VehicleLightState as vls
 from carla import TrafficLightState as tls
+from algorithm.global_route_planner import GlobalRoutePlanner, RoadOption
 
 import random
 import pickle
@@ -60,6 +52,8 @@ vehicles_list = []
 client = carla.Client('127.0.0.1', 2000)
 client.set_timeout(10.0)
 
+agent_num = 100
+
 try:
     world = client.get_world()
 
@@ -73,7 +67,7 @@ try:
     settings.max_substeps = 10
     settings.synchronous_mode = True
     settings.fixed_delta_seconds = 0.05
-    settings.no_rendering_mode = True
+    #settings.no_rendering_mode = True
     world.apply_settings(settings)
 
     blueprints = world.get_blueprint_library().filter('vehicle.*')
@@ -98,7 +92,8 @@ try:
                     x.id.endswith('model3') or
                     x.id.endswith('prius')]
 
-    spawn_points = world.get_map().get_spawn_points()
+    world_map = world.get_map()
+    spawn_points = world_map.get_spawn_points()
     number_of_spawn_points = len(spawn_points)
 
     # @todo cannot import these directly.
@@ -112,26 +107,34 @@ try:
 
     for exp in range(1000):
         save_objs = []
-
-        distance_to_leading_vehicle = [ (1.5 - random.random()) * 5. for i in range(100) ]
-        vehicle_lane_offset = [ (random.random() * 1.5 - 0.75)  for i in range(100) ]
-        vehicle_speed = [ (0.25 - random.random() * 0.5) * 100. for i in range(100) ]
-        random_lane_change = [ random.random() * 1. for i in range(100) ]
-        ignore_right = [ random.random() * 20. for i in range(100) ]
         
-        for iteration in range(20):
+        distance_to_leading_vehicle = [ np.random.uniform(5.0, 15.0) for i in range(agent_num) ]
+        vehicle_lane_offset = [ np.random.uniform(-0.3, 0.3) for i in range(agent_num) ]
+        vehicle_speed = [ np.random.uniform(-50.0, 50.0) for i in range(agent_num) ]
+        steering_ratio = [ np.clip(np.random.normal(0.9, 0.3), 0.5, 1.3) for i in range(agent_num) ]
+
+        desired_velocity = [ 11.1111 * (1.0 - vehicle_speed[i] / 100.0)  for i in range(agent_num) ]
+        vel_disp = [ np.random.uniform(0.1, 1.0) for i in range(agent_num) ]
+        lane_disp = [ np.random.uniform(0.1, 1.0) for i in range(agent_num) ]
+
+        impatient_lane_change = [ np.abs(np.random.normal(0.0, 100.0) + 20.) for i in range(agent_num) ]
+        
+
+        for iteration in range(50):
             print("exp " + str(exp) + " : " + str(iteration))
             random.shuffle(spawn_points)
             vehicles_list = []
             batch = []
             state_vectors = []
+            control_vectors = []
 
             for n, transform in enumerate(spawn_points):
-                if n >= 100:
+                if n >= agent_num:
                     break
                 blueprint = random.choice(blueprints)
                 if blueprint.has_attribute('color'):
                     color = random.choice(blueprint.get_attribute('color').recommended_values)
+
                     blueprint.set_attribute('color', color)
                 if blueprint.has_attribute('driver_id'):
                     driver_id = random.choice(blueprint.get_attribute('driver_id').recommended_values)
@@ -154,28 +157,35 @@ try:
                 traffic_manager.distance_to_leading_vehicle(actor, distance_to_leading_vehicle[i] )
                 traffic_manager.vehicle_lane_offset(actor, vehicle_lane_offset[i])
                 traffic_manager.vehicle_percentage_speed_difference(actor, vehicle_speed[i])
-                traffic_manager.ignore_lights_percentage(actor, ignore_right[i])
-                traffic_manager.random_left_lanechange_percentage(actor, random_lane_change[i])
-                traffic_manager.random_right_lanechange_percentage(actor, random_lane_change[i])
-
+                traffic_manager.ignore_lights_percentage(actor, 0)
+                traffic_manager.ignore_signs_percentage(actor, 0)
+                traffic_manager.ignore_vehicles_percentage(actor, 0)
                 
-            steer_add = [ 0. for _ in range(100) ]
-            throttle_add = [ 0. for _ in range(100) ]
-            brake_add = [ 0. for _ in range(100) ]
-            torque_added = [ 0 for _ in range(100) ]
-            
+                
+            steer_add = [ 0. for _ in range(agent_num) ]
+            throttle_add = [ 0. for _ in range(agent_num) ]
+            brake_add = [ 0. for _ in range(agent_num) ]
+            torque_added = [ 0 for _ in range(agent_num) ]
+            impatiece = [ 0.0 for i in range(agent_num) ]
+
+
+            vel_add = [ 0. for _ in range(agent_num) ]
+            lane_add = [ 0. for _ in range(agent_num) ]
+            vel_add_diff = [ 0. for _ in range(agent_num) ]
+            lane_add_diff = [ 0. for _ in range(agent_num) ]
+
+
             world.tick()
             for step in range(2000):
                 state_vector = []
+                control_vector = []
+                vehiclecontrols = []
                 for i, actor in enumerate(all_vehicle_actors):
-
-                    #distance_to_leading_vehicle[i] = distance_to_leading_vehicle[i] * 0.99 + (1.5 - criminality[i]) * 5. * 0.01 + random.uniform(-0.025, 0.025)
-                    #vehicle_lane_offset[i] = vehicle_lane_offset[i] * 0.99 + lane_shift[i] * 0.75 * 0.01 + random.uniform(-0.0025, 0.0125)
-                    #vehicle_speed[i] = vehicle_speed[i] * 0.99 + (0.75 - adventurousness[i]) * 100. * 0.01 + random.uniform(-0.25, 0.25)
 
 
                     tr = actor.get_transform()
                     v = actor.get_velocity()
+
                     try:
                         tlight = actor.get_traffic_light()
                         tlight_state = tlight.get_state()
@@ -191,35 +201,71 @@ try:
                         traj_pos = [ [t[0], t[1].transform.location.x, t[1].transform.location.y, t[1].transform.rotation.yaw] for t in traj ]
                     except:
                         traj_pos = []
+                    
+                    vel = np.sqrt(v.x * v.x + v.y * v.y)
+                    if vel > 0.1:
+                        if desired_velocity[i] > vel + 3.0:
+                            impatiece[i] += (desired_velocity[i] * 1.5 - vel) * 0.1
+                    else:
+                       impatiece[i] = 0.
+                    if impatiece[i] < 0.:
+                        impatiece[i] = 0.
+                    
+                    if impatient_lane_change[i] < impatiece[i]:
+                        traffic_manager.random_left_lanechange_percentage(actor, 100)
+                        traffic_manager.random_right_lanechange_percentage(actor, 100)
+                    else:
+                        traffic_manager.random_left_lanechange_percentage(actor, 0)
+                        traffic_manager.random_right_lanechange_percentage(actor, 0)
 
-                    if random.random() < 0.004:
+                    vel_add[i] = vel_add[i] * 0.95 + vel_add_diff[i]
+                    lane_add[i] = lane_add[i] * 0.95 + lane_add_diff[i]
+
+                    vel_add_diff[i] += -vel_add[i] * 0.001 + np.random.normal( -vel_add_diff[i] * vel_disp[i], 0.2)
+                    lane_add_diff[i] += -lane_add[i] * 0.001  + np.random.normal( -lane_add_diff[i] * lane_disp[i], 0.002)
+
+                    traffic_manager.vehicle_lane_offset(actor, vehicle_lane_offset[i] + lane_add[i])
+                    traffic_manager.vehicle_percentage_speed_difference(actor, vehicle_speed[i] + vel_add[i])
+
+                    if i == 0:
+                        print(vehicle_speed[i], vel_add[i], vel_add_diff[i], vel_disp[i])
+                    if random.random() < (1 / 200):
                         torque_added[i] = 5
                         steer_add[i] = random.random() - 0.5
                         throttle_add[i] = random.random() * 0.5
                         brake_add[i] = random.random() * 0.5
 
+                    vc = actor.get_control()
                     if torque_added[i] >= 1:
-                        control = actor.get_control()
-                        control.steer = np.clip(control.steer + steer_add[i], -1.0, 1.0)
-                        control.throttle = np.clip(control.throttle + throttle_add[i], 0.0, 1.0)
-                        control.brake = np.clip(control.brake + brake_add[i], 0.0, 1.0)
-                        actor.apply_control(control)
+                        vc.steer = np.clip(vc.steer + steer_add[i], -1.0, 1.0)
+                        vc.throttle = np.clip(vc.throttle + throttle_add[i], 0.0, 1.0)
+                        vc.brake = np.clip(vc.brake + brake_add[i], 0.0, 1.0)
                         torque_added[i] -= 1
+                    else:
+                        vc.steer = np.clip(vc.steer * steering_ratio[i], -1.0, 1.0)
 
-                    state = [tr.location.x, tr.location.y, tr.rotation.yaw, v.x, v.y, tlight_state, tlight_pos, fail, traj_pos, torque_added[i]]
+
+                    vehiclecontrols.append(carla.command.ApplyVehicleControl(actor, vc))
+
+                    state = [tr.location.x, tr.location.y, tr.rotation.yaw, v.x, v.y, tlight_state, tlight_pos, fail, traj_pos]
+                    control = [torque_added[i], impatiece[i], steer_add[i], throttle_add[i], brake_add[i], vel_add[i], lane_add[i], vc.steer, vc.throttle, vc.brake]
+
                     state_vector.append(state)
-                    
+                    control_vector.append(control)
 
+                client.apply_batch(vehiclecontrols)
                 world.tick()
                 state_vectors.append(state_vector)
+                control_vectors.append(control_vector)
             client.apply_batch([carla.command.DestroyActor(x) for x in vehicles_list])
 
 
             save_obj = {}
-            save_obj["params"] = [ [distance_to_leading_vehicle[i], vehicle_lane_offset[i], vehicle_speed[i], random_lane_change[i], ignore_right[i]] for i in range(100) ]
+            save_obj["params"] = [ [distance_to_leading_vehicle[i], vehicle_lane_offset[i], vehicle_speed[i], impatient_lane_change[i], steering_ratio[i], vel_disp[i], lane_disp[i]] for i in range(agent_num) ]
             save_obj["state_vectors"] = state_vectors
+            save_obj["control_vectors"] = control_vectors
             save_objs.append(save_obj)
-        with open("data/gathered_from_npc_batjeon2/data_" + str(exp) + ".pkl","wb") as fw:
+        with open("data/gathered_from_npc1/data_" + str(exp) + ".pkl","wb") as fw:
             pickle.dump(save_objs, fw)
 
 

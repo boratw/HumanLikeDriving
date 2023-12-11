@@ -117,60 +117,20 @@ function DrawCanvas()
                     prob = Math.sqrt(latent_output_prob[c][action])
     
                     drawctx.strokeStyle = "rgba(255, 0, 0, " + prob + ")";
-                    drawctx.lineWidth = 0.2;
+                    drawctx.lineWidth = 0.1;
     
                     drawctx.beginPath();
-                    drawctx.moveTo(l[0][0], l[0][1]);
-                    for(var i = 1; i < l.length; ++i)
+                    drawctx.moveTo(0, 0);
+                    for(var i = 0; i < l.length / 2; ++i)
                     {
-                        drawctx.lineTo(l[i][0], l[i][1]);
+                        drawctx.lineTo(l[i * 2], l[i * 2 + 1]);
                     }
                     drawctx.stroke();
-                    
-                    drawctx.strokeStyle = "rgba(255, 0, 0, " + prob + ")";
-                    drawctx.lineWidth = 0.2;
-                    for(var i = 1; i < l.length; ++i)
-                    {
-                        rot = Math.atan2(l[i][0] - l[i-1][0], l[i][1] - l[i-1][1])
-                        drawctx.beginPath();
-                        drawctx.ellipse(l[i][0], l[i][1], l[i][3] * 0.5, l[i][2] * 0.5, -rot, 0, 2 * Math.PI);
-                        drawctx.stroke();
-                    }
-                    drawctx.strokeStyle = "rgba(0, 0, 255, " + prob + ")";
-                    for(var i = 1; i < l.length; ++i)
-                    {
-                        rot = Math.atan2(l[i][0] - l[i-1][0], l[i][1] - l[i-1][1])
-                        drawctx.beginPath();
-                        drawctx.ellipse(l[i][0], l[i][1], l[i][5] * 2.0, l[i][4] * 2.0, -rot, 0, 2 * Math.PI);
-                        drawctx.stroke();
-                    }
                     
     
                     
                 }
                 
-                drawctx.strokeStyle = "rgb(255, 255, 0)";
-                drawctx.lineWidth = 0.2;
-                drawctx.beginPath();
-                drawctx.moveTo(-2.0, -2.0);
-                drawctx.lineTo(-4.0, -2.0);
-                drawctx.moveTo(-2.0, 0.0);
-                drawctx.lineTo(-4.0, 0.0);
-                drawctx.moveTo(-2.0, 2.0);
-                drawctx.lineTo(-4.0, 2.0);
-                drawctx.stroke();
-    
-                mu = (latent_output_prob[c][2] - latent_output_prob[c][1]) * 2.
-                var1 = latent_output_prob[c][3] * 0.2
-    
-                
-                drawctx.strokeStyle = "rgb(255, 0, 0)";
-                drawctx.lineWidth = 0.5;
-                drawctx.beginPath();
-                drawctx.moveTo(-2.5, Math.max(mu - 0.25, -2));
-                drawctx.lineTo(-2.5, Math.min(mu + 0.25, 2));
-                drawctx.stroke();
-    
                 
     
                 drawctx.restore()
