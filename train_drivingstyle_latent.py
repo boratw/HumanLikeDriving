@@ -14,7 +14,7 @@ except IndexError:
 import tensorflow.compat.v1 as tf
 from laneinfo import LaneInfo
 from lanetrace import LaneTrace
-from network.DrivingStyle_Latent import DrivingStyleLearner
+from network.DrivingStyle_Latent3 import DrivingStyleLearner
 from datetime import datetime
 import numpy as np
 import pickle
@@ -34,7 +34,7 @@ nextstate_len = 6
 agent_num = 100
 action_len = 31
 
-log_name = "train_log/DrivingStyle_Latent3/log_" + datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+log_name = "train_log/DrivingStyle_Latent4_nextstate/log_" + datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 log_file = open(log_name + ".txt", "wt")
 
 def rotate(posx, posy, yawsin, yawcos):
