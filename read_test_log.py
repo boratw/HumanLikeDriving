@@ -1,77 +1,88 @@
 
 import numpy as np
 import cv2
+'''
+        distance_to_leading_vehicle = [ np.random.uniform(5.0, 15.0) for i in range(agent_num) ]
+        vehicle_lane_offset = [ np.random.uniform(-0.3, 0.3) for i in range(agent_num) ]
+        vehicle_speed = [ np.random.uniform(-50.0, 50.0) for i in range(agent_num) ]
+        impatient_lane_change = [ np.abs(np.random.normal(0.0, 100.0) + 20.) for i in range(agent_num) ]
+        vel_disp = [ np.random.uniform(0.1, 1.0) for i in range(agent_num) ]
+        lane_disp = [ np.random.uniform(0.1, 1.0) for i in range(agent_num) ]
 
-def rotate(posx, posy, yawsin, yawcos):
-    return posx * yawcos - posy * yawsin, posx * yawsin + posy * yawcos
+        
+        for x in range(agent_count):
+            for t in range(6):
+                log_txt.write(str(param_vectors[x][t]) + "\t")
+            log_txt.write(str(prob_res[x] / res_num) + "\t")
+            log_txt.write(str(prob_var[x] / res_num - (prob_res[x] / res_num) ** 2))
+            for t in range(6):
+                log_txt.write("\t" + str(close_route_res[x][t] / res_num))
+            for t in range(6):
+                log_txt.write("\t" + str(close_route_var[x][t] / res_num - (close_route_res[x][t] / res_num) ** 2))
+            for t in range(6):
+                log_txt.write("\t" + str(maximum_route_res[x][t] / res_num))
+            for t in range(6):
+                log_txt.write("\t" + str(maximum_route_var[x][t] / res_num - (maximum_route_res[x][t] / res_num) ** 2))
+            log_txt.write("\n")
+'''
+def GetColor(r):
+    if r < 0.33333333:
+        return (0, 0, int(r * 768))
+    elif r < 0.66666666:
+        return (0, int((r - 0.33333333) * 768), 255)
+    else:
+        return (0, 255, int((1. - r) * 768))
 
-v_at_step = [0. for _ in range(4001)]
-v_at_step_num = [0 for _ in range(4001)]
+log_file = open("test_log/log.txt", "wt")
+for module_n in range(7):
+    res = [0.] * 32
+    res_num = 0
 
-map_image = cv2.imread("visualizer/lanemap_batjeon.png")
-M = cv2.getRotationMatrix2D((1500, 1500), 90, 1.0)
-map_image = cv2.warpAffine(map_image, M, (3000, 3000))
-
-log_file = open("policy_test_log/result_0815/zreaded_sff_policy_DriveStyle_0.txt", "wt")
-log_file_v = open("policy_test_log/result_0815/zreaded_sff_policy_DriveStyle_0_v.txt", "wt")
-for index in range(101):
-    step = 0
-    v_sum = 0
-    readed_sum = 0
-    screen = np.zeros((512, 512, 3), np.uint8)
-    agentpos = []
-    npcpos = []
-    with open("policy_test_log/result_0815/sff_policy_DriveStyle_0_" + str(index) + ".txt", "rt") as f:
-        with open("policy_test_log/result_0815/sff_policy_DriveStyle_0_" + str(index) + "_v.txt", "wt") as fw:
-            lines = f.readlines()
-            length = len(lines)
-            print(length)
-            for i, line in enumerate(lines):
-                split = line.split("\t")
-                if len(split) >= 17:
-                    v = float(split[2])
-                    v_sum += v
-                    v_at_step[step] += v
-                    v_at_step_num[step] += 1
-                    step += 1
-                if len(split) >= 18:
-                    readed_sum += float(split[17])
-                    x = float(split[18])
-                    y = float(split[19])
-                    if length < 3990:
-                        if (length - i) < 100 and (length - i) % 5 == 1:
-                            agentpos.append([x, y])
-                            npc = []
-                            for j in range(21, len(split), 3):
-                                npc.append([float(split[j]), float(split[j+1])])
-                            npcpos.append(npc)
-                    prevy = y
-                    prevx = x
-                    fw.write(str(v))
-                    for j in range(21, len(split), 3):
-                        fw.write("\t" + str(np.sqrt((float(split[j]) - x) ** 2 + (float(split[j+1]) - y) ** 2)))
-                    fw.write("\n")
+    lo_vs = np.zeros((20, 20))
+    lo_vs_num = np.zeros((20, 20)) + 1e-7
+    lo_il = np.zeros((20, 20))
+    lo_il_num = np.zeros((20, 20)) + 1e-7
+    vd_vs = np.zeros((20, 20))
+    vd_vs_num = np.zeros((20, 20)) + 1e-7
 
 
-            
-            if length < 3990:
-                M1 = np.float32([[1., 0, -1350 + 256 - agentpos[-1][0] * 5.44],[0, 1., -1635 + 256 - agentpos[-1][1] * 5.44]])
-                #M = cv2.getRotationMatrix2D((512, 512), 90, 1.0)
-                screen = cv2.warpAffine(map_image, M1, (512,512))
-                
-                for i in range(len(agentpos)):
-                    c = int(12.7 * (21 + i - len(agentpos)))
-                    cv2.circle(screen, (int((agentpos[i][0] - agentpos[-1][0]) * 5.44) + 256, int((agentpos[i][1] - agentpos[-1][1]) * 5.44) + 256), 4, (0, c, 0), -1)
-                    for npc in npcpos[i]:
-                        cv2.circle(screen, (int((npc[0] - agentpos[-1][0]) * 5.44) + 256, int((npc[1] - agentpos[-1][1]) * 5.44) + 256), 4, (0, 0, c), -1)
 
-                cv2.imwrite("policy_test_log/result_0815/sff_policy_DriveStyle_0_" + str(index) + ".png", screen)
+    with open("test_log/module" + str(module_n) + ".txt", "rt") as f:
+        for line in f.readlines():
+            s = line.split("\t")
+            if len(s) == 32:
+                v = [float(t) for t in s]
+                for t in range(26):
+                    res[t] += v[t + 6]
+                score = 0.
+                for t in range(6):
+                    r = np.exp(-((v[t + 8] / 10.) ** 2 )) * v[6]
+                    res[t + 26] += r
+                    score += r * (2 ** (t // 3))
+                score /= 14
+                res_num += 1
 
+                lo_index = int(np.clip((v[1] + 0.3) * 16 / 0.6, 0, 15)) + 1
+                vs_index = int(np.clip((v[2] + 50.) * 16 / 100., 0, 15)) + 1
+                il_index = int(np.clip((v[3] - 20.) * 16 / 150, 0, 15)) + 1
+                vd_index = int(np.clip((v[5] - 0.1) * 16 / 0.9, 0, 15)) + 1
 
-            
-    if step > 100:
-        log_file.write(str(step) + "\t" + str(v_sum / step) + "\t" + str(readed_sum / step) + "\n")
+                lo_vs[lo_index - 1 : lo_index + 1, vs_index - 1 : vs_index + 1] += score
+                #lo_vs_num[lo_index - 1 : lo_index + 1, vs_index - 1 : vs_index + 1] += 1
+                lo_il[lo_index - 1 : lo_index + 1, il_index - 1 : il_index + 1] += score
+                #lo_il_num[lo_index - 1 : lo_index + 1, il_index - 1 : il_index + 1] += 1
+                vd_vs[vs_index - 1 : vs_index + 1, vd_index - 1 : vd_index + 1] += score
+                #vs_vd_num[vs_index - 1 : vs_index + 1, vd_index - 1 : vd_index + 1] += 1
 
-for i in range(4001):
-    if v_at_step_num[i] > 0:
-        log_file_v.write(str(v_at_step[i] / v_at_step_num[i]) + "\n")
+        lo_vs /= np.max(lo_vs)
+        lo_il /= np.max(lo_il)
+        vd_vs /= np.max(vd_vs)
+
+        log_file.write(str(module_n) + "\t" + "\t".join([str(r / res_num) for r in res]) + "\n")
+        for name, t, t_num in [("lo_vs", lo_vs, lo_vs_num), ("lo_il", lo_il, lo_il_num), ("vs_vd", vd_vs, vd_vs_num)]:
+            res_img = np.zeros((256, 256, 3), np.uint8)
+            for x in range(2, 18):
+                for y in range(2, 18):
+                    cv2.rectangle(res_img, (x * 16 - 32, y * 16 - 32), (x * 16 - 16, y * 16 - 16), GetColor(t[x, y]), -1)
+            cv2.imwrite("test_log/log_" + str(module_n) + "_" + name + ".png", res_img)
+

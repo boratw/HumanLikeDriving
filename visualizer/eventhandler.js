@@ -6,18 +6,27 @@ let playevent = null;
 
 function GenerateDocument()
 {
+    let names = ["Velocity", "Traffic Light", "Neighbor", "Lane"]
     for(var i = 0; i < 8; ++i)
     {
         document.getElementById("board").innerHTML += 
         `<div id="div_l${i}" style="padding-top:10px">
-            <span style="width:40px; display:inline-block">
-            #${i < 4 ? 'G' + i : 'L' + i}
+            <span style="width:40px;display:inline-block;">
+            #${(i < 4 ? 'L' + i : 'L' + i) }
             </span><!--
-            --><input class="latentslider" id="slider_l${i}" type="range" min="-500" max="500" value="0">
-            <span id="value_l${i}">0</span>
-            <div class="latentbox">
+            --><input class="latentslider" id="slider_l${i}" type="range" min="-360" max="360" value="0">
+            <span id="value_l${i}">0</span><br>
+            <span style="width:40px;display:inline-block;">&#12288</span><!--
+            --><div class="latentbox">
                 <div class="latentinnerbox" id="box_l${i}"></div>
             </div>
+        </div>`
+    }
+    document.getElementById("board").innerHTML += ' <div id="maskvis"></div>'
+    for(var i = 0; i < 83; ++i)
+    {
+        document.getElementById("maskvis").innerHTML += 
+        `<div id="div_mask_${i}"  class="maskbox">
         </div>`
     }
     
@@ -34,8 +43,8 @@ function GenerateDocument()
               },
               scales: {
                   y: {
-                      max: 1.5,
-                      min: -1.5,
+                      max: 5,
+                      min: 0,
                       ticks: {
                           stepSize: 0.5
                       }
@@ -78,6 +87,8 @@ function AssignEventHandlers()
 
     for(var i = 0; i < 8; ++i)
         document.getElementById("slider_l" + i).addEventListener("input", ((a)=>{return function(event){OnLatentSliderChanged(a);};})(i) )
+
+    
 }
 
 function OnCanvasMouseDown(event)
@@ -164,6 +175,7 @@ function OnLatentEndSliderChanged(event)
 function OnLatentSliderChanged(i)
 {
     document.getElementById("value_l" + i).innerHTML = document.getElementById("slider_l" + i).value / 100
+    latent_changed = true;
     if(clicked != -1)
     {
         RequestOutput(clicked);

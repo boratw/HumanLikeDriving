@@ -14,7 +14,7 @@ except IndexError:
 import tensorflow.compat.v1 as tf
 from laneinfo import LaneInfo
 from lanetrace import LaneTrace
-from network.DrivingStyle_Latent3 import DrivingStyleLearner
+from network.DrivingStyle_Latent3_latentinput3 import DrivingStyleLearner
 from datetime import datetime
 import numpy as np
 import pickle
@@ -33,8 +33,9 @@ prevstate_len = 6
 nextstate_len = 6
 agent_num = 100
 action_len = 31
+latent_len = 4
 
-log_name = "train_log/DrivingStyle_Latent4_nextstate2/log_" + datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+log_name = "train_log/DrivingStyle_AvgLatent5/" + datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 log_file = open(log_name + ".txt", "wt")
 
 def rotate(posx, posy, yawsin, yawcos):
@@ -143,21 +144,25 @@ tf.disable_eager_execution()
 sess = tf.Session()
 with sess.as_default():
     learner = DrivingStyleLearner(state_len=state_len, prevstate_len=prevstate_len, nextstate_len=nextstate_len, action_len=action_len,
-                                  route_loss_weight=[4.0, 4.0, 2.0, 2.0, 1.0, 1.0], action_loss_weight=0.1)
+                                  latent_len= latent_len, route_loss_weight=[4.0, 4.0, 2.0, 2.0, 1.0, 1.0], action_loss_weight=0.1)
     learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
     sess.run(tf.global_variables_initializer())
     learner.network_initialize()
-    #learner_saver.restore(sess, "train_log/DrivingStyle11_Bayesian_Latent/log_2023-09-19-18-22-43_20.ckpt")
+    #learner_saver.restore(sess, "train_log/DrivingStyle_AvgLatent2/2024-02-19-16-24-49_300.ckpt")
     log_file.write("Epoch" + learner.log_caption() + "\n")
     with multiprocessing.Pool(20) as pool:
         history = []
         for epoch in range(1, 10000):
             pkl_index = random.randrange(32)
+            #pkl_index = random.choice(["data__LC1_SR1_VN1_LN1", "data__LC1_SR1_VN1_LN2", "data__LC1_SR1_VN1_LN4", "data__LC1_SR1_VN1_LN8",
+            #                           "data__LC1_SR1_VN2_LN1", "data__LC1_SR1_VN2_LN2", "data__LC1_SR1_VN2_LN4", "data__LC1_SR1_VN2_LN8"])
             print("Epoch " + str(epoch))
-            if epoch % 20 == 1:
+            if epoch % 10 == 1:
                 history = history[(len(history) // 16):]
                 print("Read data " + str(pkl_index))
                 with open("data/gathered_from_npc1/data_" + str(pkl_index) + ".pkl","rb") as fr:
+                #with open("data/gathered_from_npc1/" + pkl_index + ".pkl","rb") as fr:
+
                     data = pickle.load(fr)
 
                     history_data = [[] for _ in range(agent_num)]
@@ -169,12 +174,36 @@ with sess.as_default():
                             history.append(r)
 
             print("Current History Length : " + str(len(history)))
-            for iter in range(len(history) * 4):
-                        
+
+            for iter in range(len(history)):
+                if iter % 100 == 0:
+                    print("Get Latent #" + str(iter))
+                cur_history = history[iter]
+                state_dic = [step[0] for step in cur_history]
+                prevstate_dic = [step[1] for step in cur_history]
+                nextstate_dic = [step[2] for step in cur_history]
+
+                latent_mu, latent_std = learner.get_latent(state_dic,prevstate_dic, nextstate_dic)
+                avg_latent = np.sum(latent_mu * (latent_std ** 2), axis=0) / np.sum(latent_std ** 2, axis=0)
+
+                if len(cur_history[0]) == 4:
+                    for step in cur_history:
+                        step.append(avg_latent)
+                else:
+                    for step in cur_history:
+                        step[4] = avg_latent
+                    
+                
+
+            for iter in range(len(history)):
+                if iter % 100 == 0:
+                    print("Train #" + str(iter))
+                    
                 state_dic = []
                 prevstate_dic = []
                 nextstate_dic = []
                 action_dic = []
+                latent_dic = []
                 agent_indices = random.sample(range(len(history)), 8)
                 for agent_index in agent_indices:
                     cur_history = history[agent_index]
@@ -184,7 +213,8 @@ with sess.as_default():
                     prevstate_dic.extend([cur_history[step][1] for step in step_dic])
                     nextstate_dic.extend([cur_history[step][2] for step in step_dic])
                     action_dic.extend([cur_history[step][3] for step in step_dic])
-                learner.optimize(state_dic, prevstate_dic, nextstate_dic, action_dic)
+                    latent_dic.extend([cur_history[step][4] for step in step_dic])
+                learner.optimize(epoch, state_dic, prevstate_dic, nextstate_dic, action_dic, latent_dic)
             learner.log_print()
             log_file.write(str(epoch) + learner.current_log() + "\n")
             log_file.flush()

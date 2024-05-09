@@ -19,7 +19,7 @@ import datetime
 import tensorflow.compat.v1 as tf
 from lanetrace import LaneTrace
 
-from network.DrivingStyle_Latent3 import DrivingStyleLearner
+from network.DrivingStyle_Nolatent import DrivingStyleLearner
 
 state_len = 83
 prevstate_len = 6
@@ -32,7 +32,7 @@ pred_num = 31
 def rotate(posx, posy, yawsin, yawcos):
     return posx * yawcos - posy * yawsin, posx * yawsin + posy * yawcos
 
-class RoutePredictor_DriveStyle:
+class RoutePredictor_DriveStyle_Nolatent:
     def __init__(self, laneinfo, npc_count = 100, player_count=1, sess=None, name="", snapshot=""):
         self.npc_count = npc_count
         self.player_count = player_count
@@ -42,7 +42,7 @@ class RoutePredictor_DriveStyle:
         else:
             self.sess = sess
         with self.sess.as_default():
-            self.learner = DrivingStyleLearner(name=name, state_len=state_len, prevstate_len=prevstate_len, nextstate_len=nextstate_len, isTraining=False)
+            self.learner = DrivingStyleLearner(name=name, state_len=state_len, nextstate_len=nextstate_len, isTraining=False)
             learner_saver = tf.train.Saver(var_list=self.learner.trainable_dict, max_to_keep=0)
             learner_saver.restore(self.sess, snapshot)
 
@@ -117,55 +117,4 @@ class RoutePredictor_DriveStyle:
         self.history.append([state_dic, position_dic])
 
         with self.sess.as_default():
-            res_route, res_prob, _ = self.learner.get_output(state_dic, self.global_latent_mean, discrete=True)
-
-        self.pred_prob = []
-        self.pred_route = []
-        for i in range(self.npc_count):
-            tr = transforms[i]
-            px = tr.location.x
-            py = tr.location.y
-            yawsin = np.sin(tr.rotation.yaw  * 0.017453293)
-            yawcos = np.cos(tr.rotation.yaw  * 0.017453293)
-            route = []
-            prob = []
-            for a in range(action_len):
-                l = []
-                for j in range(3):
-                    dx, dy = rotate(res_route[i][a][2 * j], res_route[i][a][2 * j + 1], yawsin, yawcos)
-                    l.extend([dx + px, dy + py])
-                route.append(l)
-                prob.append(res_prob[i][a])
-            self.pred_route.append(route)
-            self.pred_prob.append(prob)
-
-        if len(self.history) > 60:
-            state_dic = self.history[0][0]
-            nextstate_dic = []
-            for i in range(self.npc_count):
-                nextstate = []  
-                for j in range(20, 80, 20) :
-                    relposx = self.history[j][1][i][0] - self.history[0][1][i][0]
-                    relposy = self.history[j][1][i][1] - self.history[0][1][i][1]
-                    px, py = rotate(relposx, relposy, self.history[0][1][i][2], self.history[0][1][i][3])
-                    nextstate.extend([px, py])
-                nextstate_dic.append(nextstate)
-            if self.use_global_latent :
-                with self.sess.as_default():
-                    res_latent = self.learner.get_latent(state_dic, nextstate_dic)
-
-                    new_divider = res_latent ** 2
-                    self.global_latent_mean = self.global_latent_mean * (self.global_latent_divider  / (self.global_latent_divider + new_divider)) + \
-                        res_latent * (new_divider / (self.global_latent_divider + new_divider))
-                    self.global_latent_divider = self.global_latent_divider * 0.99 + new_divider
-
-            self.history = self.history[1:]
-
-    def Add_Global_Latent_by_State(self, state_dic, nextstate_dic):
-        with self.sess.as_default():
-            res_latent = self.learner.get_latent(state_dic, nextstate_dic)
-
-            new_divider = res_latent ** 2
-            self.global_latent_mean = self.global_latent_mean * (self.global_latent_divider  / (self.global_latent_divider + new_divider)) + \
-                res_latent * (new_divider / (self.global_latent_divider + new_divider))
-            self.global_latent_divider = self.global_latent_divider * 0.99 + new_divider
+            res_route, res_prob  = self.learner.get_output(state_dic, discrete=True)

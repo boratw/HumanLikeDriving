@@ -19,7 +19,7 @@ import datetime
 import tensorflow.compat.v1 as tf
 from lanetrace import LaneTrace
 
-from network.DrivingStyle_Latent3 import DrivingStyleLearner
+from network.DrivingStyle_Latent3_latentinput2 import DrivingStyleLearner
 
 state_len = 83
 prevstate_len = 6
@@ -32,7 +32,7 @@ pred_num = 31
 def rotate(posx, posy, yawsin, yawcos):
     return posx * yawcos - posy * yawsin, posx * yawsin + posy * yawcos
 
-class RoutePredictor_DriveStyle:
+class RoutePredictor_DriveStyle_AvgLatent:
     def __init__(self, laneinfo, npc_count = 100, player_count=1, sess=None, name="", snapshot=""):
         self.npc_count = npc_count
         self.player_count = player_count
@@ -139,12 +139,21 @@ class RoutePredictor_DriveStyle:
             self.pred_route.append(route)
             self.pred_prob.append(prob)
 
-        if len(self.history) > 60:
-            state_dic = self.history[0][0]
+        if len(self.history) > 120:
+            state_dic = self.history[60][0]
+            prevstate_dic = []
+            for i in range(self.npc_count):
+                prevstate = []  
+                for j in range(0, 60, 20) :
+                    relposx = self.history[j][1][i][0] - self.history[0][1][i][0]
+                    relposy = self.history[j][1][i][1] - self.history[0][1][i][1]
+                    px, py = rotate(relposx, relposy, self.history[0][1][i][2], self.history[0][1][i][3])
+                    prevstate.extend([px, py])
+                prevstate_dic.append(prevstate)
             nextstate_dic = []
             for i in range(self.npc_count):
                 nextstate = []  
-                for j in range(20, 80, 20) :
+                for j in range(80, 140, 20) :
                     relposx = self.history[j][1][i][0] - self.history[0][1][i][0]
                     relposy = self.history[j][1][i][1] - self.history[0][1][i][1]
                     px, py = rotate(relposx, relposy, self.history[0][1][i][2], self.history[0][1][i][3])
@@ -152,7 +161,7 @@ class RoutePredictor_DriveStyle:
                 nextstate_dic.append(nextstate)
             if self.use_global_latent :
                 with self.sess.as_default():
-                    res_latent = self.learner.get_latent(state_dic, nextstate_dic)
+                    res_latent = self.learner.get_latent(state_dic, prevstate_dic, nextstate_dic)
 
                     new_divider = res_latent ** 2
                     self.global_latent_mean = self.global_latent_mean * (self.global_latent_divider  / (self.global_latent_divider + new_divider)) + \

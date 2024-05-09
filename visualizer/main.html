@@ -20,7 +20,7 @@
         .latentslider
         {
             width:360px;
-            margin:0px;
+            margin-left:10px;
         }
         .latentslider::-moz-range-track
         {
@@ -40,9 +40,10 @@
         .latentbox
         {
             background-color: black;
-            margin-left:40px;
+            margin-left:10px;
             width: 360px;
             height: 20px;
+            display:inline-block;
         }
         .latentinnerbox
         {
@@ -52,6 +53,20 @@
             position:relative;
             left: 160px;
             width: 40px;
+        }
+        .maskbox
+        {
+            margin:0px;
+            padding:0px;
+            display:inline-block;
+            width: 16px;
+            height: 16px;
+            position:relative;
+        }
+        #maskvis
+        {
+            padding:4px;
+            background-color: black;
         }
     </style>
 </head>
@@ -90,9 +105,10 @@
             <input  id="checkbox_center" type="checkbox" checked>
             <label for="checkbox_center">Center Target</label>
         </div>
+
     
     </div>
-    <div style="width: 1200px;"><canvas id="chart"></canvas></div>
+    <div style="width: 1200px;" hidden><canvas id="chart"></canvas></div>
     <div style="display:none;">
         <img id="world_background" src="lanemap_batjeon.png"/>
     </div>

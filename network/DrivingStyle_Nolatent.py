@@ -67,7 +67,20 @@ class DrivingStyleLearner():
                     route_train_gradient_clipped = [ ( None if g is None else tf.clip_by_value(g, -0.1, 0.1), v) for g, v in self.route_train_gradient]
                     self.route_train = self.route_optimizer.apply_gradients(route_train_gradient_clipped)
 
-                    
+                else:
+                    action_constant = tf.constant(list(range(action_len)), dtype=tf.float32, shape=[action_len, 1])  * 2. / (action_len - 1) - 1.
+                    action_input = tf.tile(action_constant, [tf.shape(self.layer_input_state)[0], 1])
+                    route_input = tf.reshape(tf.tile(self.layer_input_state, [1, action_len]), [-1, state_len])
+                    final_route_input = tf.concat([route_input, action_input], axis=1)
+
+                    self.final_route_h1 = Bayesian_FC(final_route_input, state_len + 1, 512, input_dropout = self.layer_input_dropout, 
+                                        output_nonln = tf.nn.leaky_relu, name="route_h1", reuse=True)
+                    self.final_route_h2 = Bayesian_FC(self.final_route_h1.layer_output, 512, 256, input_dropout = self.layer_input_dropout, 
+                                        output_nonln = tf.nn.leaky_relu, name="route_h2", reuse=True)
+                    self.final_route_h3 = FC(self.final_route_h2.layer_output, 256, nextstate_len, input_dropout = None, 
+                                        output_nonln = None, name="route_h3", reuse=True)
+                    self.final_route_output = tf.reshape(self.final_route_h3.layer_output, [-1, action_len, nextstate_len])
+
                 
             self.trainable_params = tf.trainable_variables(scope=tf.get_variable_scope().name)
             def nameremover(x, n):
@@ -109,11 +122,10 @@ class DrivingStyleLearner():
         self.log_action_reg += l4
         self.log_num += 1
 
-    def get_output(self, input_state, input_action, discrete=True):
-        input_list = {self.layer_input_state : input_state, self.layer_input_action : input_action,
-                      self.layer_input_dropout : (0.0 if discrete else 0.1)}
+    def get_output(self, input_state, discrete=True):
+        input_list = {self.layer_input_state : input_state, self.layer_input_dropout : (0.0 if discrete else 0.1)}
         sess = tf.get_default_session()
-        l1, l2 = sess.run([self.route_output, self.action_output] , input_list)
+        l1, l2 = sess.run([self.final_route_output, self.action_output] , input_list)
         return l1, l2
     
 

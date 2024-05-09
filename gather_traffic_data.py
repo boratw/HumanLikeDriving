@@ -265,7 +265,7 @@ try:
             save_obj["state_vectors"] = state_vectors
             save_obj["control_vectors"] = control_vectors
             save_objs.append(save_obj)
-        with open("data/gathered_from_npc1/data_" + str(exp) + ".pkl","wb") as fw:
+        with open("data/gathered_from_npc2/data_" + str(exp) + ".pkl","wb") as fw:
             pickle.dump(save_objs, fw)
 
 

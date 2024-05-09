@@ -16,6 +16,7 @@ const carla_rotate = 1.570796327;
 
 var clicked = -1;
 var draw_all = false;
+var latent_changed = false;
 
 var current_step = 0;
 var vehicles = [];
@@ -27,6 +28,11 @@ var latent_output = {};
 var latent_output_prob = {};
 var latent_idx = null;
 var real_output = {};
+var latent_used = {};
+var mask_used = {};
+var ego_vehicle = -1;
+
+var predictor_index = 0;
 
 let draw_potential = false;
 
@@ -68,6 +74,8 @@ function DrawCanvas()
         drawctx.save()
         if(k == clicked)
             drawctx.fillStyle = "rgb(255, 255, 0)";
+        else if(k == ego_vehicle)
+                drawctx.fillStyle = "rgb(255, 0, 255)";
         drawctx.transform(1, 0, 0, 1, v[0], v[1])
         drawctx.rotate(v[2])
         drawctx.fillRect(-1.8, -0.7, 3.6, 1.4);
@@ -78,7 +86,8 @@ function DrawCanvas()
     if (draw_all)
     {
         for(var k = 0; k < vehicles.length; ++k)
-            draw.push(k)
+            if(k != ego_vehicle)
+                draw.push(k)
     }
     else if(clicked != -1)
     {
@@ -86,7 +95,7 @@ function DrawCanvas()
     }
     for(c of draw)
     {
-        drawctx.strokeStyle = "rgba(0, 255, 0)";
+        drawctx.strokeStyle = "rgba(0, 0, 255)";
         drawctx.lineWidth = 0.5;
         if(c in real_output)
         {
@@ -114,10 +123,12 @@ function DrawCanvas()
                 for(var action = 0; action < latent_output[c].length; action++)
                 {
                     l = latent_output[c][action]
-                    prob = Math.sqrt(latent_output_prob[c][action])
-    
-                    drawctx.strokeStyle = "rgba(255, 0, 0, " + prob + ")";
-                    drawctx.lineWidth = 0.1;
+                    prob = Math.pow(latent_output_prob[c][action], 0.75)
+                    //if(prob < 0.5)
+                        drawctx.strokeStyle = "rgba(255, 0, 0, " + prob * 1.5 + ")";
+                    //else
+                    //    drawctx.strokeStyle = "rgba(255, " + Math.round(prob * 511 - 256) + ", 0, 0.75)";
+                    drawctx.lineWidth = 0.2;
     
                     drawctx.beginPath();
                     drawctx.moveTo(0, 0);
@@ -136,7 +147,27 @@ function DrawCanvas()
                 drawctx.restore()
             }
         }
+        /*
+        if(c in latent_used)
+        {
+            v = vehicles[c];
 
+            drawctx.save()
+            drawctx.transform(1, 0, 0, 1, v[0], v[1])
+
+            for(var i = 0; i < 4; ++i)
+            {
+                color = Math.floor(latent_used[c][i] * 192) + 64
+                drawctx.fillStyle = "rgb(" + color + "," + color + "," + color + ")"; 
+                drawctx.fillRect(2, -4 - i * 2, 2, 2)
+
+            }
+            drawctx.strokeStyle = "rgb(255, 255, 255)";
+            drawctx.strokeRect(2, -10, 2, 8)
+            drawctx.lineWidth = 0.1;
+            drawctx.restore()
+        }
+        */
     }
 
     visctx.drawImage(drawctx.canvas, 0, 0);
@@ -179,6 +210,7 @@ function CanvasClick(x, y)
         }
     }
     draw_all = false;
+    latent_changed = false;
     DrawCanvas();
 }
 

@@ -45,9 +45,16 @@ function RequestOutput(target, draw=true)
                     DrawCanvas()          
             }
         };
-        url = "/v/predictroute/" + target + "/";
-        for(var i = 0; i < latent_length; ++i)
-            url += document.getElementById("value_l" + i).innerHTML + "/"
+        url = "/v/predictroute/" + target + "/" + predictor_index + "/";
+        if(latent_changed)
+        {
+            for(var i = 0; i < latent_length; ++i)
+                url += document.getElementById("value_l" + i).innerHTML + "/"
+        }
+        else
+        {
+            url += document.getElementById("textbox_latentstart").value + "/" + document.getElementById("textbox_latentend").value  + "/";
+        }
         xmlHttp.open("GET", url, false);
         xmlHttp.send();
 }
@@ -59,7 +66,7 @@ function RequestLatentData(target)
             HandleLatentData(target, xmlHttp.responseText);            
         }
     };
-    url = "/v/latents/" + target + "/";
+    url = "/v/latents/" + target + "/" + predictor_index + "/";
     xmlHttp.open("GET", url, false);
     xmlHttp.send();
 }
@@ -71,7 +78,19 @@ function RequestLatentPredicted(target)
             HandleLatentPredicted(target, xmlHttp.responseText);            
         }
     };
-    url = "/v/predictlatent/" + target + "/" + document.getElementById("textbox_latentstart").value + "/" + document.getElementById("textbox_latentend").value  + "/";
+    url = "/v/predictlatent/" + target + "/" + predictor_index + "/" + document.getElementById("textbox_latentstart").value + "/" + document.getElementById("textbox_latentend").value  + "/";
+    xmlHttp.open("GET", url, false);
+    xmlHttp.send();
+}
+function RequestExp(idx, exp)
+{
+    var xmlHttp = new XMLHttpRequest();
+    xmlHttp.onreadystatechange = function() {
+        if(this.status == 200 && this.readyState == this.DONE) {
+            RequestCurrentStep();            
+        }
+    };
+    url = "/v/setexp/" + idx + "/" + exp + "/";
     xmlHttp.open("GET", url, false);
     xmlHttp.send();
 }
@@ -113,10 +132,18 @@ function HandleOutput(target, response)
     real_output[target] = data["route"];
     latent_output[target] = data["predicted"];
     latent_output_prob[target] = data["action_prob"];
+    latent_used[target] = data["latent"];
+    mask_used[target] = data["mask"];
+
+    for(var i = 0; i < data["mask"].length; ++i)
+    {
+        c = Math.floor(data["mask"][i] * 128)
+        document.getElementById("div_mask_" + i).style.backgroundColor = `rgb(${c}, ${c}, ${c})`
+    }
 }
 function HandleLatentData(c, response)
 {
-    /*
+    
     j = JSON.parse(response);
     datalist = [];
     const bordercolors = ["#1e90ff", "#ff1493", "#228b22", "#daa520", "#4B0082", "#4169E1", "#008B8B", "#006400"]
@@ -143,13 +170,13 @@ function HandleLatentData(c, response)
 
         RequestLatentPredicted(c);
     }
-    */
+    
     RequestOutput(c);
 }
 
 function HandleLatentPredicted(c, response)
 {
-     /*
+     
     if(clicked == c)
     {
         data = JSON.parse(response);
@@ -161,8 +188,10 @@ function HandleLatentPredicted(c, response)
             slider = document.getElementById("slider_l" + i)
 
             mu = Math.round(latent_predicted_mu[i] * 100)
-            l = mu * 0.45 + 180 - Math.max(latent_predicted_var[i], 0.1) * 45
-            r = mu * 0.45 + 180 + Math.max(latent_predicted_var[i], 0.1) * 45
+            //l = mu * 0.45 + 180 - Math.max(latent_predicted_var[i], 0.1) * 45
+            //r = mu * 0.45 + 180 + Math.max(latent_predicted_var[i], 0.1) * 45
+            l = mu * 0.45 + 170
+            r = mu * 0.45 + 190
 
             if(l < 0)
                 l = 0
@@ -178,7 +207,7 @@ function HandleLatentPredicted(c, response)
             document.getElementById("value_l" + i).innerHTML = mu / 100
         }
         RequestOutput(c);
-    }*/
+    }
     RequestOutput(c);
 
 }

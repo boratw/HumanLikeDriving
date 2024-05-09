@@ -17,29 +17,31 @@ import numpy as np
 import datetime
 
 class RoutePredictor_Default:
-    def __init__(self, laneinfo, agent_count=100, use_global_latent=False):
+    def __init__(self):
 
-        self.output_route_len = 5
-        self.output_route_num = 1
-        self.global_latent_parsed_count = 0
+        pass
 
     def Assign_NPCS(self, npcs):
         self.npcs = npcs
         self.agent_count = len(npcs)
+    
+    def Reset(self):
+        pass
 
-    def Get_Predict_Result(self, close_npcs, npc_transforms, npc_velocities, actor_transform, actor_velocitiy, npc_traffic_sign, npc_impatience):
+    def Get_Predict_Result(self, transforms, velocities,  npc_lights, impatiences):
         self.pred_prob = []
         self.pred_route = []
-        for i in close_npcs:
-            x = npc_transforms[i].location.x
-            y = npc_transforms[i].location.y
-            vx = npc_velocities[i].x * 0.75
-            vy = npc_velocities[i].y * 0.75
+        for i in range(self.agent_count):
+            x = transforms[i].location.x
+            y = transforms[i].location.y
+            vx = velocities[i].x
+            vy = velocities[i].y
             route = []
-            for j in range(5):
+            for j in range(3):
                 x += vx
                 y += vy
-                route.append([x, y])
+                route.extend([x, y])
 
-            self.pred_prob.append(1.)
-            self.pred_route.append(route)
+            self.pred_prob.append([1.])
+            self.pred_route.append([route])
+            
