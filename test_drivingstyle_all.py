@@ -161,7 +161,7 @@ with sess.as_default():
     predictor_list = [(predictor_default, None), (predictor_latent, False),(predictor_latent, True),
                       (predictor_avglatent, False),(predictor_avglatent, True)]
     pkl_index = 0
-    exp_index = 5
+    exp_index = 6
 
     loaded_pkl_index = -1
     loaded_exp_index = -1

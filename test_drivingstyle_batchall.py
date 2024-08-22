@@ -15,7 +15,7 @@ from laneinfo import LaneInfo
 from lanetrace import LaneTrace
 from network.DrivingStyle_Nolatent import DrivingStyleLearner as DrivingStyleLearner0
 from network.DrivingStyle_Latent3 import DrivingStyleLearner as DrivingStyleLearner1
-from network.DrivingStyle_Latent3_latentinput import DrivingStyleLearner as DrivingStyleLearner2
+from network.DrivingStyle_Latent_CVae import DrivingStyleLearner as DrivingStyleLearner2
 from datetime import datetime
 import numpy as np
 import pickle
@@ -47,7 +47,7 @@ exp_index = 1
 tf.disable_eager_execution()
 sess = tf.Session()
 
-log_txt = open("test_log/module" + str(module_n) + ".txt", "wt")
+log_txt = open("test_log/log3/module" + str(module_n) + ".txt", "wt")
 
 with sess.as_default():
     if module_n == 0:
@@ -61,12 +61,12 @@ with sess.as_default():
         learner_saver.restore(sess, "train_log/DrivingStyle_Latent4_nextstate2/log_2023-12-28-14-55-59_1000.ckpt")
     elif module_n <= 6:
         learner = DrivingStyleLearner2(state_len=state_len, prevstate_len=prevstate_len, nextstate_len=nextstate_len, 
-                                       isTraining=False, test_mask_use = (module_n == 6))
+                                       isTraining=False)
         learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
-        learner_saver.restore(sess, "train_log/DrivingStyle_AvgLatent/2024-02-16-17-42-11_600.ckpt")
+        learner_saver.restore(sess, "train_log/DrivingStyle_Latent_CVae2/log_2024-05-22-14-00-09_1480.ckpt")
 
-    for pkl_index in range(4):
-        with open("data/gathered_from_npc1/data_" + str(pkl_index) + ".pkl","rb") as fr:
+    for pkl_index in range(17):
+        with open("data/gathered_from_npc3/data_" + str(pkl_index) + "_0.pkl","rb") as fr:
             data = pickle.load(fr)
 
         prob_res = np.zeros(100)
@@ -77,8 +77,7 @@ with sess.as_default():
         maximum_route_var = np.zeros((100, nextstate_len))
         res_num = 0
 
-        #for exp_index in range(len(data)):
-        for exp_index in range(10):
+        for exp_index in range(len(data)):
             print("Pkl " + str(pkl_index) + " Exp " + str(exp_index))
             state_vectors = data[exp_index]["state_vectors"]
             control_vectors = data[exp_index]["control_vectors"]
@@ -163,8 +162,8 @@ with sess.as_default():
                     elif action > 29:
                         action = 29
                     cur_history[i].append( [np.concatenate([[velocity, (1. if state_vectors[step][i][5] == 0. else 0.), px, py, control_vectors[step][i][1]],
-                                                            np.array(other_vcs).flatten(), np.array(route).flatten()]), 
-                                            nextstate, action])
+                                                                np.array(other_vcs).flatten(), np.array(route).flatten()]), 
+                                                nextstate, action])
 
 
             if module_n == 0:
@@ -222,8 +221,10 @@ with sess.as_default():
                         nextstate_dic.append(cur_history[x][step][1])
                         action_dic.append(cur_history[x][step][2])
 
-
-                    res_route, res_action, _ = learner.get_output(state_dic, global_latent, discrete=True)
+                    if module_n > 3:
+                        res_route, res_action, _ = learner.get_output_latent(state_dic, global_latent, discrete=True)
+                    else:
+                        res_route, res_action, _ = learner.get_output(state_dic, global_latent, discrete=True)
                     
                     
                     for x in range(agent_count):

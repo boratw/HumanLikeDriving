@@ -133,12 +133,16 @@ function HandleOutput(target, response)
     latent_output[target] = data["predicted"];
     latent_output_prob[target] = data["action_prob"];
     latent_used[target] = data["latent"];
-    mask_used[target] = data["mask"];
-
-    for(var i = 0; i < data["mask"].length; ++i)
+    if("mask" in data)
     {
-        c = Math.floor(data["mask"][i] * 128)
-        document.getElementById("div_mask_" + i).style.backgroundColor = `rgb(${c}, ${c}, ${c})`
+        mask_used[target] = data["mask"];
+    
+        for(var i = 0; i < data["mask"].length; ++i)
+        {
+            c = Math.floor(data["mask"][i] * 128)
+            document.getElementById("div_mask_" + i).style.backgroundColor = `rgb(${c}, ${c}, ${c})`
+        }
+        
     }
 }
 function HandleLatentData(c, response)
