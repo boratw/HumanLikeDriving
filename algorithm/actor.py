@@ -74,9 +74,9 @@ class Actor(object):
         if self.spawn_point == None:
             spawn_points = self.map.get_spawn_points()
             spawn_point_indices = list(range(len(spawn_points)))
-            spawn_point_indices = sorted(spawn_point_indices, key=lambda i : (spawn_points[i].location.x ** 2 + spawn_points[i].location.y ** 2))
+            #spawn_point_indices = sorted(spawn_point_indices, key=lambda i : (spawn_points[i].location.x ** 2 + spawn_points[i].location.y ** 2))
             while self.player is None:
-                spawn_index = random.choice(spawn_point_indices[:32])
+                spawn_index = random.choice(spawn_point_indices)
                 spawn_point = spawn_points[spawn_index]
                 self.player = self.world.try_spawn_actor(bp, spawn_point)
             spawn_point_indices.remove(spawn_index)
@@ -102,16 +102,17 @@ class Actor(object):
         else:
             destination = self.dest_point.location
 
-        start_waypoint = self.map.get_waypoint(ego_loc)
-        end_waypoint = self.map.get_waypoint(destination)
-        route = self.route_planner.trace_route(start_waypoint.transform.location, end_waypoint.transform.location)
+        #start_waypoint = self.map.get_waypoint(ego_loc)
+        #end_waypoint = self.map.get_waypoint(destination)
+        #route = self.route_planner.trace_route(start_waypoint.transform.location, end_waypoint.transform.location)
+        route = self.route_planner.trace_route(ego_loc, destination)
         for r in route:
             self.route.append(r)
 
         w_norm = [f_vec.x, f_vec.y]
         self.prev_w_norm = w_norm
     
-    def step(self, action):
+    def step(self, action, return_control=False):
 
 
         vehicle_transform = self.player.get_transform()
@@ -162,7 +163,6 @@ class Actor(object):
         elif theta < -np.pi:
             theta += (2 * np.pi)
 
-
         control = carla.VehicleControl()
         control.throttle = action[0]
         control.brake = action[1]
@@ -171,14 +171,23 @@ class Actor(object):
         control.hand_brake = False
         control.reverse = False
         control.gear = 0
-        self.player.apply_control(control)
+        if return_control :
+            return {
+                "velocity" : np.sqrt(v_vec.x ** 2 + v_vec.y ** 2),
+                "dest_angle" : theta,
+                "success_dest" : success_dest,
+                "collision" : self.collision_sensor.collision,
+                "control" : control
+            }
+        else :
+            self.player.apply_control(control)
+            return {
+                "velocity" : np.sqrt(v_vec.x ** 2 + v_vec.y ** 2),
+                "dest_angle" : theta,
+                "success_dest" : success_dest,
+                "collision" : self.collision_sensor.collision
+            }
 
-        return {
-            "velocity" : np.sqrt(v_vec.x ** 2 + v_vec.y ** 2),
-            "dest_angle" : theta,
-            "success_dest" : success_dest,
-            "collision" : self.collision_sensor.collision
-        }
     
 
     def destroy(self):

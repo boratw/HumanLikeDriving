@@ -107,127 +107,129 @@ try:
     for exp in range(1000):
         for lane_offset_mag in [1, 2, 4, 8]:
             for vel_ratio_mag in [1, 2, 4, 8]:
-                save_objs = []
-                
-                distance_to_leading_vehicle = [ np.random.uniform(-5.0, 5.0) + 10.  for i in range(agent_num) ]
-                vehicle_lane_offset = [ np.random.uniform(-1.0, 1.0) * (lane_offset_mag / 8) for i in range(agent_num) ]
-                vehicle_speed = [ np.random.uniform(-50.0, 50.0) * (vel_ratio_mag / 8) for i in range(agent_num) ]
-                steer_ratio = [ np.clip(np.random.normal(0., 0.125), -0.25, 0.25) + 1.0 for i in range(agent_num) ]
-                accel_ratio = [ np.clip(np.random.normal(0., 0.125), -0.25, 0.25) + 1.0 for i in range(agent_num) ]
-                brake_ratio = [ np.clip(np.random.normal(0., 0.125), -0.25, 0.25) + 1.0 for i in range(agent_num) ]
-                impatient_lane_change = [ np.random.uniform(200., 1200.)  for i in range(agent_num) ]
-
-                desired_velocity = [ 11.1111 * (1.0 - vehicle_speed[i] / 100.0)  for i in range(agent_num) ]
-                
-                exp_str = str(exp) + "_LO" + str(lane_offset_mag) + "_VR" + str(vel_ratio_mag)
-                for iteration in range(10):
-                    print("exp " + exp_str + " : " + str(iteration))
-                    random.shuffle(spawn_points)
-                    vehicles_list = []
-                    batch = []
-                    state_vectors = []
-                    control_vectors = []
-
-                    for n, transform in enumerate(spawn_points):
-                        if n >= agent_num:
-                            break
-                        blueprint = random.choice(blueprints)
-                        if blueprint.has_attribute('color'):
-                            color = random.choice(blueprint.get_attribute('color').recommended_values)
-
-                            blueprint.set_attribute('color', color)
-                        if blueprint.has_attribute('driver_id'):
-                            driver_id = random.choice(blueprint.get_attribute('driver_id').recommended_values)
-                            blueprint.set_attribute('driver_id', driver_id)
-                        blueprint.set_attribute('role_name', 'autopilot')
-
-                        # spawn the cars and set their autopilot and light state all together
-                        batch.append(SpawnActor(blueprint, transform)
-                            .then(SetAutopilot(FutureActor, True, traffic_manager.get_port())))
-
-                    for response in client.apply_batch_sync(batch, True):
-                        if response.error:
-                            print(response.error)
-                        else:
-                            vehicles_list.append(response.actor_id)
-
-                    all_vehicle_actors = world.get_actors(vehicles_list)
-
-                    for i, actor in enumerate(all_vehicle_actors):
-                        traffic_manager.distance_to_leading_vehicle(actor, distance_to_leading_vehicle[i] )
-                        traffic_manager.vehicle_lane_offset(actor, vehicle_lane_offset[i])
-                        traffic_manager.vehicle_percentage_speed_difference(actor, vehicle_speed[i])
-                        traffic_manager.ignore_lights_percentage(actor, 0)
-                        traffic_manager.ignore_signs_percentage(actor, 0)
-                        traffic_manager.ignore_vehicles_percentage(actor, 0)
+                for steer_ratio_mag in [1, 2, 4, 8]:
+                    for accel_ratio_mag in [1, 2, 4, 8]:
+                        save_objs = []
                         
+                        distance_to_leading_vehicle = [ np.random.uniform(-5.0, 5.0) + 10.  for i in range(agent_num) ]
+                        vehicle_lane_offset = [ np.random.uniform(-1.0, 1.0) * (lane_offset_mag / 8) for i in range(agent_num) ]
+                        vehicle_speed = [ np.random.uniform(-50.0, 50.0) * (vel_ratio_mag / 8) for i in range(agent_num) ]
+                        steer_ratio = [ np.clip(np.random.normal(0., 0.25), -0.5, 0.5) * (steer_ratio_mag / 8) + 1.0 for i in range(agent_num) ]
+                        accel_ratio = [ np.clip(np.random.normal(0., 0.25), -0.5, 0.5) * (accel_ratio_mag / 8) + 1.0 for i in range(agent_num) ]
+                        brake_ratio = [ np.clip(np.random.normal(0., 0.25), -0.5, 0.5) * (accel_ratio_mag / 8) + 1.0 for i in range(agent_num) ]
+                        impatient_lane_change = [ np.random.uniform(200., 1200.)  for i in range(agent_num) ]
+
+                        desired_velocity = [ 11.1111 * (1.0 - vehicle_speed[i] / 100.0)  for i in range(agent_num) ]
                         
-                    impatiece = [ 0.0 for i in range(agent_num) ]
+                        exp_str = str(exp) + "_LO" + str(lane_offset_mag) + "_VR" + str(vel_ratio_mag)  + "_SR" + str(steer_ratio_mag)  + "_AR" + str(accel_ratio_mag)
+                        for iteration in range(10):
+                            print("exp " + exp_str + " : " + str(iteration))
+                            random.shuffle(spawn_points)
+                            vehicles_list = []
+                            batch = []
+                            state_vectors = []
+                            control_vectors = []
 
-                    world.tick()
-                    for step in range(2000):
-                        state_vector = []
-                        control_vector = []
-                        vehiclecontrols = []
-                        for i, actor in enumerate(all_vehicle_actors):
+                            for n, transform in enumerate(spawn_points):
+                                if n >= agent_num:
+                                    break
+                                blueprint = random.choice(blueprints)
+                                if blueprint.has_attribute('color'):
+                                    color = random.choice(blueprint.get_attribute('color').recommended_values)
 
+                                    blueprint.set_attribute('color', color)
+                                if blueprint.has_attribute('driver_id'):
+                                    driver_id = random.choice(blueprint.get_attribute('driver_id').recommended_values)
+                                    blueprint.set_attribute('driver_id', driver_id)
+                                blueprint.set_attribute('role_name', 'autopilot')
 
-                            tr = actor.get_transform()
-                            v = actor.get_velocity()
+                                # spawn the cars and set their autopilot and light state all together
+                                batch.append(SpawnActor(blueprint, transform)
+                                    .then(SetAutopilot(FutureActor, True, traffic_manager.get_port())))
 
-                            try:
-                                tlight = actor.get_traffic_light()
-                                tlight_state = tlight.get_state()
-                                tlight_wps = tlight.get_stop_waypoints()
-                                tlight_pos = [[w.transform.location.x, w.transform.location.y] for w in tlight_wps ]
-                            except:
-                                tlight_state = carla.TrafficLightState.Unknown
-                                tlight_pos = []
-
-                            vel = np.sqrt(v.x * v.x + v.y * v.y)
-                            if vel > 0.1:
-                                if desired_velocity[i] > vel + 3.0:
-                                    impatiece[i] += (desired_velocity[i] * 1.5 - vel) * 0.1
+                            for response in client.apply_batch_sync(batch, True):
+                                if response.error:
+                                    print(response.error)
                                 else:
-                                    impatiece[i] = 0.
-                            if impatiece[i] < 0.:
-                                impatiece[i] = 0.
-                            
-                            if impatient_lane_change[i] < impatiece[i]:
-                                traffic_manager.random_left_lanechange_percentage(actor, 100)
-                                traffic_manager.random_right_lanechange_percentage(actor, 100)
-                            else:
-                                traffic_manager.random_left_lanechange_percentage(actor, 0)
-                                traffic_manager.random_right_lanechange_percentage(actor, 0)
+                                    vehicles_list.append(response.actor_id)
 
-                            vc = actor.get_control()
-                            vc.steer = np.clip(vc.steer * steer_ratio[i], -1.0, 1.0)
-                            vc.brake = np.clip(vc.brake * brake_ratio[i], 0.0, 1.0)
-                            vc.throttle = np.clip(vc.throttle * accel_ratio[i], 0.0, 1.0)
+                            all_vehicle_actors = world.get_actors(vehicles_list)
 
+                            for i, actor in enumerate(all_vehicle_actors):
+                                traffic_manager.distance_to_leading_vehicle(actor, distance_to_leading_vehicle[i] )
+                                traffic_manager.vehicle_lane_offset(actor, vehicle_lane_offset[i])
+                                traffic_manager.vehicle_percentage_speed_difference(actor, vehicle_speed[i])
+                                traffic_manager.ignore_lights_percentage(actor, 0)
+                                traffic_manager.ignore_signs_percentage(actor, 0)
+                                traffic_manager.ignore_vehicles_percentage(actor, 0)
+                                
+                                
+                            impatiece = [ 0.0 for i in range(agent_num) ]
 
-                            vehiclecontrols.append(carla.command.ApplyVehicleControl(actor, vc))
-
-                            state = [tr.location.x, tr.location.y, tr.rotation.yaw, v.x, v.y, tlight_state, tlight_pos]
-                            control = [0., impatiece[i],  vc.steer, vc.throttle, vc.brake]
-
-                            state_vector.append(state)
-                            control_vector.append(control)
-
-                        client.apply_batch(vehiclecontrols)
-                        world.tick()
-                        state_vectors.append(state_vector)
-                        control_vectors.append(control_vector)
-                    client.apply_batch([carla.command.DestroyActor(x) for x in vehicles_list])
+                            world.tick()
+                            for step in range(2000):
+                                state_vector = []
+                                control_vector = []
+                                vehiclecontrols = []
+                                for i, actor in enumerate(all_vehicle_actors):
 
 
-                    save_obj = {}
-                    save_obj["params"] = [ [distance_to_leading_vehicle[i], vehicle_lane_offset[i], vehicle_speed[i], impatient_lane_change[i], steer_ratio[i], brake_ratio[i], accel_ratio[i]] for i in range(agent_num) ]
-                    save_obj["state_vectors"] = state_vectors
-                    save_obj["control_vectors"] = control_vectors
-                    save_objs.append(save_obj)
-                with open("data/gathered_from_npc4/data_" + exp_str + ".pkl","wb") as fw:
-                    pickle.dump(save_objs, fw)
+                                    tr = actor.get_transform()
+                                    v = actor.get_velocity()
+
+                                    try:
+                                        tlight = actor.get_traffic_light()
+                                        tlight_state = tlight.get_state()
+                                        tlight_wps = tlight.get_stop_waypoints()
+                                        tlight_pos = [[w.transform.location.x, w.transform.location.y] for w in tlight_wps ]
+                                    except:
+                                        tlight_state = carla.TrafficLightState.Unknown
+                                        tlight_pos = []
+
+                                    vel = np.sqrt(v.x * v.x + v.y * v.y)
+                                    if vel > 0.1:
+                                        if desired_velocity[i] > vel + 3.0:
+                                            impatiece[i] += (desired_velocity[i] * 1.5 - vel) * 0.1
+                                        else:
+                                            impatiece[i] = 0.
+                                    if impatiece[i] < 0.:
+                                        impatiece[i] = 0.
+                                    
+                                    if impatient_lane_change[i] < impatiece[i]:
+                                        traffic_manager.random_left_lanechange_percentage(actor, 100)
+                                        traffic_manager.random_right_lanechange_percentage(actor, 100)
+                                    else:
+                                        traffic_manager.random_left_lanechange_percentage(actor, 0)
+                                        traffic_manager.random_right_lanechange_percentage(actor, 0)
+
+                                    vc = actor.get_control()
+                                    vc.steer = np.clip(vc.steer * steer_ratio[i], -1.0, 1.0)
+                                    vc.brake = np.clip(vc.brake * brake_ratio[i], 0.0, 1.0)
+                                    vc.throttle = np.clip(vc.throttle * accel_ratio[i], 0.0, 1.0)
+
+
+                                    vehiclecontrols.append(carla.command.ApplyVehicleControl(actor, vc))
+
+                                    state = [tr.location.x, tr.location.y, tr.rotation.yaw, v.x, v.y, tlight_state, tlight_pos]
+                                    control = [0., impatiece[i],  vc.steer, vc.throttle, vc.brake]
+
+                                    state_vector.append(state)
+                                    control_vector.append(control)
+
+                                client.apply_batch(vehiclecontrols)
+                                world.tick()
+                                state_vectors.append(state_vector)
+                                control_vectors.append(control_vector)
+                            client.apply_batch([carla.command.DestroyActor(x) for x in vehicles_list])
+
+
+                            save_obj = {}
+                            save_obj["params"] = [ [distance_to_leading_vehicle[i], vehicle_lane_offset[i], vehicle_speed[i], impatient_lane_change[i], steer_ratio[i], brake_ratio[i], accel_ratio[i]] for i in range(agent_num) ]
+                            save_obj["state_vectors"] = state_vectors
+                            save_obj["control_vectors"] = control_vectors
+                            save_objs.append(save_obj)
+                        with open("data/gathered_from_npc4/data_" + exp_str + ".pkl","wb") as fw:
+                            pickle.dump(save_objs, fw)
 
 
 finally:

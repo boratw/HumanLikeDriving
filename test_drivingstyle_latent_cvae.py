@@ -81,7 +81,7 @@ def SendOutput(list):
     state_dic = [cur_history[target][current_step - step_start_index][0]]
     #action_dic = [i for i in range(pred_num)]
 
-    if len(list) == 7:
+    if len(list) == 6:
         latent = np.array([float(list[1]), float(list[2]), float(list[3]), float(list[4])])
     else:
         start = int(list[1])
@@ -96,7 +96,7 @@ def SendOutput(list):
     latent_dic = [latent]
     
     with sess.as_default():
-        l_state, l_prob = learner.get_output_latent(state_dic, latent_dic, discrete=True)
+        l_state, l_prob, _ = learner.get_output_latent(state_dic, latent_dic, discrete=True)
         
     l_prob = np.mean(l_prob, axis=0)
     res = json.dumps({"route" : d_state, "predicted" : l_state[0], "action_prob" : l_prob,  "latent" : latent}, cls=MyEncoder)
@@ -111,7 +111,7 @@ def rotate(posx, posy, yawsin, yawcos):
 laneinfo = LaneInfo()
 laneinfo.Load_from_File("laneinfo_Batjeon.pkl")
 
-state_len = 83
+state_len = 82
 prevstate_len = 6
 nextstate_len = 6
 agent_num = 100
@@ -126,12 +126,14 @@ tf.disable_eager_execution()
 sess = tf.Session()
 with sess.as_default():
 
-    learner = DrivingStyleLearner(state_len=state_len + 6, prevstate_len=prevstate_len, nextstate_len=nextstate_len, 
+    learner = DrivingStyleLearner(state_len=state_len, prevstate_len=prevstate_len, nextstate_len=nextstate_len, 
                                        isTraining=False)
     learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
-    learner_saver.restore(sess, "train_log/DrivingStyle_Latent_CVae/log_2024-05-17-18-05-41_1920.ckpt")
+    learner_saver.restore(sess, "train_log/DrivingStyle_Latent_CVae3/log_2024-08-20-13-54-15_1760.ckpt")
 
-    with open("data/gathered_from_npc1/data_" + str(pkl_index) + ".pkl","rb") as fr:
+    pkl_names = os.listdir("data/gathered_from_npc4_2")
+
+    with open("data/gathered_from_npc4_2/" + pkl_names[pkl_index],"rb") as fr:
         data = pickle.load(fr)
 
 
@@ -200,7 +202,11 @@ with sess.as_default():
                         px, py = rotate(t[0] - x, t[1] - y, yawsin, yawcos)
                     
 
-            cur_history[i].append( [np.concatenate([[velocity, (1. if state_vectors[step][i][5] == 0. else 0.), px, py], control_vectors[step][i][:7], 
+            tstate = 1. if (state_vectors[step][i][5] == carla.TrafficLightState.Red or 
+                            state_vectors[step][i][5] == carla.TrafficLightState.Yellow) \
+                        else 0.
+                                
+            cur_history[i].append( [np.concatenate([[velocity, tstate, px, py], 
                                                     np.array(other_vcs).flatten(), np.array(route).flatten()]), nextstate])
 
     global_latent_mu = [[] for _ in range(agent_count)]
@@ -216,7 +222,7 @@ with sess.as_default():
             state_dic.append(cur_history[x][step][0])
             nextstate_dic.append(cur_history[x][step][1])
 
-        res_mu = learner.get_latent(state_dic, discrete=True)
+        res_mu = learner.get_latent(state_dic, nextstate_dic, discrete=True)
         for x in range(agent_count):
             global_latent_mu[x].append(res_mu[x])
 

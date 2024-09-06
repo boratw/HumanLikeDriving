@@ -45,7 +45,7 @@ function RequestOutput(target, draw=true)
                     DrawCanvas()          
             }
         };
-        url = "/v/predictroute/" + target + "/" + predictor_index + "/";
+        url = "/v/predictroute/" + target + "/";
         if(latent_changed)
         {
             for(var i = 0; i < latent_length; ++i)
@@ -66,7 +66,7 @@ function RequestLatentData(target)
             HandleLatentData(target, xmlHttp.responseText);            
         }
     };
-    url = "/v/latents/" + target + "/" + predictor_index + "/";
+    url = "/v/latents/" + target + "/";
     xmlHttp.open("GET", url, false);
     xmlHttp.send();
 }
