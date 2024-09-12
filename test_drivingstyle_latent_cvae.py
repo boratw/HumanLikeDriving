@@ -94,12 +94,15 @@ def SendOutput(list):
         latent = m / (end - start)
 
     latent_dic = [latent]
+    latent_dic2 = [latent * 0.4]
     
     with sess.as_default():
         l_state, l_prob, _ = learner.get_output_latent(state_dic, latent_dic, discrete=True)
+        l_state2, l_prob2, _ = learner.get_output_latent(state_dic, latent_dic2, discrete=True)
         
     l_prob = np.mean(l_prob, axis=0)
-    res = json.dumps({"route" : d_state, "predicted" : l_state[0], "action_prob" : l_prob,  "latent" : latent}, cls=MyEncoder)
+    res = json.dumps({"route" : d_state, "predicted" : l_state[0], "action_prob" : l_prob,  "latent" : latent,
+                      "zero_predicted" : l_state2[0]}, cls=MyEncoder)
     print("vehicle " + str(target) + " step " + str(current_step))
     return res
 
@@ -133,7 +136,9 @@ with sess.as_default():
 
     pkl_names = os.listdir("data/gathered_from_npc4_2")
 
-    with open("data/gathered_from_npc4_2/" + pkl_names[pkl_index],"rb") as fr:
+    #with open("data/gathered_from_npc4_2/" + pkl_names[pkl_index],"rb") as fr:
+    with open("data/gathered_from_npc4_2/data_0_LO8_VR8.pkl","rb") as fr:
+    
         data = pickle.load(fr)
 
 

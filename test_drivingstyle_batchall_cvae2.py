@@ -32,7 +32,7 @@ def rotate(posx, posy, yawsin, yawcos):
     return posx * yawcos - posy * yawsin, posx * yawsin + posy * yawcos
 
 
-state_len = 83
+state_len = 82
 prevstate_len = 6
 nextstate_len = 6
 agent_num = 100
@@ -47,10 +47,10 @@ tf.disable_eager_execution()
 sess = tf.Session()
 
 
-log_txt = open("test_log/log4_4/module" + str(module_n) + ".txt", "wt")
+log_txt = open("test_log/log4_5/module" + str(module_n) + ".txt", "wt")
 
 with sess.as_default():
-    learner = DrivingStyleLearner(state_len=state_len - 1, prevstate_len=prevstate_len, nextstate_len=nextstate_len, action_len=action_len, param_len=param_len,
+    learner = DrivingStyleLearner(state_len=state_len, prevstate_len=prevstate_len, nextstate_len=nextstate_len, action_len=action_len, param_len=param_len,
                                 route_loss_weight=[4.0, 4.0, 2.0, 2.0, 1.0, 1.0], action_loss_weight=0.1)
     learner_saver = tf.train.Saver(var_list=learner.trainable_dict, max_to_keep=0)
     learner_saver.restore(sess, "train_log/DrivingStyle_Latent_CVae3/log_2024-08-20-13-54-15_1760.ckpt")
@@ -70,7 +70,7 @@ with sess.as_default():
         maximum_route_var = np.zeros((agent_count, nextstate_len))
         global_latent = np.zeros((agent_count, global_latent_len))
         global_latent_mean = np.zeros((agent_count, global_latent_len))
-        global_latent_div = np.zeros((agent_count, global_latent_len)) + 1.
+        global_latent_div = np.zeros((agent_count, global_latent_len)) + 0.0000001
         res_num = np.zeros(agent_count)
 
         step_prob_res = np.zeros(500)
@@ -79,32 +79,33 @@ with sess.as_default():
         step_maximum_route_res = np.zeros((500, nextstate_len))
         step_close_route_var = np.zeros((500, nextstate_len))
         step_maximum_route_var = np.zeros((500, nextstate_len))
+        res_step_num = np.zeros(500)
 
         for exp_index in range(len(data)):
-            with open("test_log/log4_4/module" + str(module_n) + "_" + pkl_name + "_" + str(exp_index) + ".txt", "wt") as log_exp_steps :
-                if module_n == 1:
-                    global_latent = np.zeros((agent_count, global_latent_len))
-                    global_latent_mean = np.zeros((agent_count, global_latent_len))
-                    global_latent_div = np.zeros((agent_count, global_latent_len)) + 1.
-                state_vectors = data[exp_index]["state_vectors"]
-                param_vectors = data[exp_index]["params"]
-                agent_count = len(state_vectors[0])
-                lane_tracers = [LaneTrace(laneinfo, 5) for _ in range(agent_count)]
-                cur_history = [[] for _ in range(agent_count)]
+            if module_n == 1:
+                global_latent = np.zeros((agent_count, global_latent_len))
+                global_latent_mean = np.zeros((agent_count, global_latent_len))
+                global_latent_div = np.zeros((agent_count, global_latent_len)) + 1.
+            state_vectors = data[exp_index]["state_vectors"]
+            param_vectors = data[exp_index]["params"]
+            agent_count = len(state_vectors[0])
+            lane_tracers = [LaneTrace(laneinfo, 5) for _ in range(agent_count)]
+            cur_history = [[] for _ in range(agent_count)]
 
-                step_start_index = 200
-                step_count = len(state_vectors) - step_start_index - 150
+            step_start_index = 200
+            step_count = len(state_vectors) - step_start_index - 150
 
-                for step in range(step_start_index, step_start_index+step_count, 4):
-                    if step % 100 == 0:
-                        print("Read Step " + str(step))
-                    for i in range(agent_count):
-                        x = state_vectors[step][i][0]
-                        y = state_vectors[step][i][1]
-                        yawsin = np.sin(state_vectors[step][i][2]  * -0.017453293)
-                        yawcos = np.cos(state_vectors[step][i][2]  * -0.017453293)
-                        velocity = np.sqrt(state_vectors[step][i][3] ** 2 + state_vectors[step][i][4] ** 2)
+            for step in range(step_start_index, step_start_index+step_count, 4):
+                if step % 100 == 0:
+                    print("Read Step " + str(step))
+                for i in range(agent_count):
+                    x = state_vectors[step][i][0]
+                    y = state_vectors[step][i][1]
+                    yawsin = np.sin(state_vectors[step][i][2]  * -0.017453293)
+                    yawcos = np.cos(state_vectors[step][i][2]  * -0.017453293)
+                    velocity = np.sqrt(state_vectors[step][i][3] ** 2 + state_vectors[step][i][4] ** 2)
 
+                    if velocity > 1.:
                         distance_array = [(state_vectors[step][j][0] - x) ** 2 + (state_vectors[step][j][1] - y) ** 2 for j in range(agent_count)]
                         distance_indicies = np.array(distance_array).argsort()
 
@@ -173,49 +174,50 @@ with sess.as_default():
                         
                         cur_history[i].append( [np.concatenate([[velocity, tstate, px, py],
                                                                 np.array(other_vcs).flatten(), np.array(route).flatten()]), 
-                                                nextstate, action])
+                                                np.array(nextstate), action])
+                    else:
+                        cur_history[i].append( [np.zeros((state_len, )), np.zeros((nextstate_len, )), 15])
 
 
-                if module_n == 2:
-                    for step in range(step_count // 4):
-                        if step % 100 == 0:
-                            print("Getting latent from step " + str(step))
-                        state_dic = []
-                        nextstate_dic = []
-                        for x in range(agent_count):
-                            state_dic.append(cur_history[x][step][0])
-                            nextstate_dic.append(cur_history[x][step][1])
 
-                        res_mu = learner.get_latent(state_dic, nextstate_dic, discrete=True)
-                        global_latent += res_mu * np.sum(res_mu ** 2, axis=1, keepdims=True)
-                        global_latent_div += np.sum(res_mu ** 2, axis=1, keepdims=True)
-                    global_latent_mean = global_latent / global_latent_div
-
+            if module_n == 2:
                 for step in range(step_count // 4):
                     if step % 100 == 0:
-                        print("Parsing step " + str(step))
+                        print("Getting latent from step " + str(step))
                     state_dic = []
                     nextstate_dic = []
-                    action_dic = []
                     for x in range(agent_count):
                         state_dic.append(cur_history[x][step][0])
                         nextstate_dic.append(cur_history[x][step][1])
-                        action_dic.append(cur_history[x][step][2])
-
                     res_mu = learner.get_latent(state_dic, nextstate_dic, discrete=True)
-                    if module_n == 1:
-                        global_latent += res_mu * np.sum(res_mu ** 2, axis=1, keepdims=True)
-                        global_latent_div += np.sum(res_mu ** 2, axis=1, keepdims=True)
-                        global_latent_mean = global_latent / global_latent_div
-
-                    if module_n == 0:
-                        res_route, res_action, _ = learner.get_output_latent(state_dic, global_latent_mean, discrete=True)
-                    elif  module_n == 1:
-                        res_route, res_action, _ = learner.get_output_latent(state_dic, global_latent_mean * 0.5 + res_mu * 0.5, discrete=True)
-                    else:
-                        res_route, res_action, _ = learner.get_output_latent(state_dic, global_latent_mean * 0.5 + res_mu * 0.5, discrete=True)
-                                        
                     for x in range(agent_count):
+                        if state_dic[x][0] > 0.:
+                            global_latent[x] += res_mu[x] * np.sum(res_mu[x] ** 2)
+                            global_latent_div[x] += np.sum(res_mu[x] ** 2)
+                global_latent_mean = global_latent / global_latent_div
+
+            for step in range(step_count // 4):
+                if step % 100 == 0:
+                    print("Parsing step " + str(step))
+                state_dic = []
+                nextstate_dic = []
+                action_dic = []
+                for x in range(agent_count):
+                    state_dic.append(cur_history[x][step][0])
+                    nextstate_dic.append(cur_history[x][step][1])
+                    action_dic.append(cur_history[x][step][2])
+
+                res_mu = learner.get_latent(state_dic, nextstate_dic, discrete=True)
+                if module_n == 1:
+                    if state_dic[x][0] > 0.:
+                        global_latent[x] += res_mu[x] * np.sum(res_mu[x] ** 2)
+                        global_latent_div[x] += np.sum(res_mu[x] ** 2)
+                    global_latent_mean = global_latent / global_latent_div
+
+                res_route, res_action, _ = learner.get_output_latent(state_dic, global_latent_mean, discrete=True)
+                                    
+                for x in range(agent_count):
+                    if state_dic[x][0] > 0.:
                         prob = (res_action[x][action_dic[x] - 1] + res_action[x][action_dic[x]] + res_action[x][action_dic[x] + 1])
                         max_action = np.argmax(res_action[x])
                         d_route = res_route[x] - np.reshape(nextstate_dic[x], (1, nextstate_len))
@@ -235,12 +237,7 @@ with sess.as_default():
                         step_close_route_var[step] += d_route[max_action] ** 2
                         step_maximum_route_res[step] += np.abs(d_route[min_route])
                         step_maximum_route_var[step] += d_route[min_route] ** 2
-
-                        if x == exp_index:
-                            log_exp_steps.write("\t".join([str(x) for x in global_latent_mean[x]]) + "\t")
-                            log_exp_steps.write(str(prob)+ "\t")
-                            log_exp_steps.write("\t".join([str(np.abs(x)) for x in d_route[max_action]]) + "\n")
-
+                        res_step_num[step] += 1
                                         
 
         for x in range(agent_count):
@@ -280,7 +277,7 @@ with sess.as_default():
         log_txt.write("\n")
             
 
-        with open("test_log/log4_4/module" + str(module_n) + "_" + pkl_name + ".txt", "wt") as log_exp_txt :
+        with open("test_log/log4_5/module" + str(module_n) + "_" + pkl_name + ".txt", "wt") as log_exp_txt :
             for x in range(agent_count):
                 for t in range(6):
                     log_exp_txt.write(str(param_vectors[x][t]) + "\t")
@@ -297,7 +294,7 @@ with sess.as_default():
                 log_exp_txt.write("\n")
                 
 
-        with open("test_log/log4_4/module" + str(module_n) + "_" + pkl_name + "_step.txt", "wt") as log_exp_txt :
+        with open("test_log/log4_5/module" + str(module_n) + "_" + pkl_name + "_step.txt", "wt") as log_exp_txt :
             for x in range(500):
                 log_exp_txt.write(str(step_prob_res[x]) + "\t")
                 log_exp_txt.write(str(step_prob_var[x] - (step_prob_res[x]) ** 2))

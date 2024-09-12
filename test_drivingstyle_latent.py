@@ -94,12 +94,15 @@ def SendOutput(list):
         latent = m / (end - start)
 
     latent_dic = [latent]
+    latent_dic2 = [[0., 0., 0., 0.]]
     
     with sess.as_default():
         l_state, l_prob, l_mask = learner.get_output(state_dic, latent_dic, discrete=True)
+        l_state2, l_prob2, l_mask2 = learner.get_output(state_dic, latent_dic2, discrete=True)
         
     l_prob = np.mean(l_prob, axis=0)
-    res = json.dumps({"route" : d_state, "predicted" : l_state[0], "action_prob" : l_prob, "mask" : l_mask[0], "latent" : latent}, cls=MyEncoder)
+    res = json.dumps({"route" : d_state, "predicted" : l_state[0], "action_prob" : l_prob, "mask" : l_mask[0], "latent" : latent,
+                      "zero_predicted" : l_state2[0]}, cls=MyEncoder)
     print("vehicle " + str(target) + " step " + str(current_step))
     return res
 

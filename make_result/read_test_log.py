@@ -29,17 +29,17 @@ for module_n in range(3):
     vd_vs = np.zeros((18, 18))
     vd_vs_num = np.zeros((18, 18)) + 1e-7
 
-    exp_names = os.listdir("test_log/log4_2")
+    exp_names = os.listdir("test_log/log4_5")
     for exp_name in exp_names:
         if exp_name.startswith("module" + str(module_n) + "_data"):
 
-            with open("test_log/log4_2/" + exp_name, "rt") as f:
+            with open("test_log/log4_5/" + exp_name, "rt") as f:
                 for line in f.readlines():
                     s = line.split("\t")
                     if len(s) == 32:
                         v = [float(t) for t in s]
                         score = 0.
-                        for t in range(6):
+                        for t in range(1):
                             r = np.exp(-((v[t + 8] * 5.) ** 2 )) * v[6]
                             score += r * (2 ** (-(t // 2)))
                         #distance_to_leading_vehicle = [ np.random.uniform(-5.0, 5.0) + 10.  for i in range(agent_num) ]
@@ -86,12 +86,12 @@ for module_n in range(3):
         for x in range(2, 18):
             for y in range(2, 18):
                 cv2.rectangle(res_img, (x * 16 - 32, y * 16 - 32), (x * 16 - 16, y * 16 - 16), GetColor(t[x, y]), -1)
-        cv2.imwrite("test_log/log4_2/parse/log_" + str(module_n) + "_" + name + ".png", res_img)
+        cv2.imwrite("test_log/log4_5/parse/log_" + str(module_n) + "_" + name + ".png", res_img)
 
 
 
     for name, t, t_num in [("lo", lo, lo_num), ("vd", vd, vd_num), ("vs", vs, vs_num), ("il", il, il)]:
-        with open("test_log/log4_2/parse/log_" + str(module_n) + "_" + name + ".txt", "wt") as w:
+        with open("test_log/log4_5/parse/log_" + str(module_n) + "_" + name + ".txt", "wt") as w:
             for x in range(1, 101):
                 w.write(str(t[x]) + "\n")
             

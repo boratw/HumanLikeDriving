@@ -144,6 +144,10 @@ function HandleOutput(target, response)
         }
         
     }
+    if("zero_predicted" in data)
+    {
+        zero_latent_output[target] = data["zero_predicted"];
+    }
 }
 function HandleLatentData(c, response)
 {

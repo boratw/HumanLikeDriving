@@ -25,6 +25,7 @@ var latent_predicted_mu = null;
 var latent_predicted_var = null;
 var latent_data = {};
 var latent_output = {};
+var zero_latent_output = {}
 var latent_output_prob = {};
 var latent_idx = null;
 var real_output = {};
@@ -61,19 +62,22 @@ function DrawCanvas()
     drawctx.fillRect(0, 0, 640, 640);
 
     drawctx.setTransform(viewport_scale, 0, 0, viewport_scale, viewport_x, viewport_y);
+    drawctx.filter = 'invert(1)';
     drawctx.drawImage(laneimage, 0, 0)
+    drawctx.filter = 'none';
+
 
 
     drawctx.transform(carla_scale, 0, 0, carla_scale, carla_x, carla_y)
     drawctx.rotate(carla_rotate)
-    drawctx.fillStyle = "rgb(0, 255, 0)";
+    drawctx.fillStyle = "rgb(0, 0, 255)";
 
     for(var k = 0; k < vehicles.length; ++k)
     {
         v = vehicles[k];
         drawctx.save()
         if(k == clicked)
-            drawctx.fillStyle = "rgb(255, 255, 0)";
+            drawctx.fillStyle = "rgb(0, 255, 0)";
         else if(k == ego_vehicle)
                 drawctx.fillStyle = "rgb(255, 0, 255)";
         drawctx.transform(1, 0, 0, 1, v[0], v[1])
@@ -95,8 +99,8 @@ function DrawCanvas()
     }
     for(c of draw)
     {
-        drawctx.strokeStyle = "rgba(0, 0, 255)";
-        drawctx.lineWidth = 0.5;
+        drawctx.strokeStyle = "rgba(0, 128, 0)";
+        drawctx.lineWidth = 0.7;
         if(c in real_output)
         {
             if(real_output[c].length > 1)
@@ -108,8 +112,36 @@ function DrawCanvas()
                     drawctx.lineTo(real_output[c][i][0], real_output[c][i][1]);
                 }
                 drawctx.stroke();
-    
             }
+        }
+        if(c in zero_latent_output)
+        {
+            v = vehicles[c];
+
+            drawctx.save()
+            drawctx.transform(1, 0, 0, 1, v[0], v[1])
+            drawctx.rotate(v[2])
+            for(var action = 0; action < zero_latent_output[c].length; action++)
+            {
+                l = zero_latent_output[c][action]
+                prob = Math.pow(latent_output_prob[c][action], 0.75)
+                //if(prob < 0.5)
+                    drawctx.strokeStyle = "rgba(0, 0, 255, " + prob * 1.5 + ")";
+                //else
+                //    drawctx.strokeStyle = "rgba(255, " + Math.round(prob * 511 - 256) + ", 0, 0.75)";
+                drawctx.lineWidth = 0.2;
+
+                drawctx.beginPath();
+                drawctx.moveTo(0, 0);
+                for(var i = 0; i < l.length / 2; ++i)
+                {
+                    drawctx.lineTo(l[i * 2], l[i * 2 + 1]);
+                }
+                drawctx.stroke();
+                
+            }
+            drawctx.restore()
+
         }
         if(c in latent_output)
         {
@@ -137,8 +169,6 @@ function DrawCanvas()
                         drawctx.lineTo(l[i * 2], l[i * 2 + 1]);
                     }
                     drawctx.stroke();
-                    
-    
                     
                 }
                 
